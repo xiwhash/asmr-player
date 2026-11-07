@@ -1,0 +1,2842 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>ASMR 播放器 · 逆向复刻</title>
+<style>
+:root{
+  --bg:#ffffff; --bg2:#f7f8fa; --bg3:#eef1f5; --bg4:#e6eaf0;
+  --line:#e3e7ee; --line2:#d5dbe4;
+  --txt:#161a21; --txt2:#3d4655; --dim:#7a8494;
+  --accent:#0f9d94; --accent-weak:#e2f5f3; --accent-fg:#ffffff;
+  --blue:#3b6ef0; --blue-weak:#e8eefc;
+  --warn:#b45309; --warn-weak:#fdf3e3;
+  --err:#dc2626;
+  --shadow:0 1px 2px rgba(16,24,40,.06), 0 4px 14px rgba(16,24,40,.07);
+  --shadow-lg:0 10px 40px rgba(16,24,40,.16);
+  --radius:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--txt);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  overflow:hidden; -webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input,select{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line2);border-radius:8px;padding:5px 9px}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-weak)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#d3d9e2;border-radius:6px;border:2px solid var(--bg)}
+::-webkit-scrollbar-thumb:hover{background:#bcc4d0}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ================= 布局 ================= */
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+
+header{
+  display:flex;align-items:center;gap:10px;padding:10px 16px;
+  background:var(--bg);border-bottom:1px solid var(--line);flex:0 0 auto;
+  padding-top:calc(10px + env(safe-area-inset-top,0px));
+}
+.logo{font-weight:750;font-size:15px;letter-spacing:.2px;display:flex;align-items:center;gap:7px}
+.logo i{
+  width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,var(--accent),#37c6b8);
+  display:grid;place-items:center;color:#fff;font-size:12px;font-style:normal;
+}
+.logo b{color:var(--accent)}
+.spacer{flex:1}
+.tag{
+  font-size:11px;color:var(--dim);border:1px solid var(--line);padding:2px 8px;border-radius:20px;
+  background:var(--bg2);
+}
+
+main{display:flex;flex:1;min-height:0}
+aside{
+  width:286px;flex:0 0 286px;border-right:1px solid var(--line);
+  background:var(--bg2);display:flex;flex-direction:column;min-height:0;
+}
+.pane-head{
+  display:flex;align-items:center;gap:8px;padding:9px 14px;
+  border-bottom:1px solid var(--line);font-size:11.5px;color:var(--dim);
+  text-transform:uppercase;letter-spacing:.7px;font-weight:600;
+  background:var(--bg2);flex:0 0 auto;
+}
+.tree{overflow:auto;flex:1;padding:6px 6px 14px}
+.node{
+  display:flex;align-items:center;gap:7px;padding:7px 30px 7px 9px;border-radius:8px;
+  cursor:pointer;font-size:13px;white-space:nowrap;overflow:hidden;
+  color:var(--txt2);position:relative;
+}
+.node:hover{background:var(--bg3)}
+.node.sel{background:var(--accent-weak);color:#0b7a73;font-weight:600}
+.node .ico{width:16px;text-align:center;flex:0 0 16px;font-size:12px;opacity:.9}
+.node .nm{overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.node .cnt{margin-left:auto;font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums;flex:0 0 auto}
+.node.child{padding-left:22px}
+.node.grandchild{padding-left:38px}
+
+/* 文件夹删除键：右上角 */
+.node-del{
+  position:absolute;top:1px;right:2px;width:20px;height:20px;border-radius:6px;
+  display:grid;place-items:center;font-size:11px;line-height:1;color:var(--dim);
+  opacity:0;transition:opacity .12s,background .12s,color .12s;
+}
+.node:hover .node-del,.node.sel .node-del{opacity:1}
+.node-del:hover{background:var(--err);color:#fff}
+
+section.center{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+
+/* ================= 曲目列表 ================= */
+.list-wrap{flex:1;overflow:auto;min-height:0}
+.track{
+  display:flex;align-items:center;gap:11px;padding:11px 16px;
+  border-bottom:1px solid var(--line);cursor:pointer;
+}
+.track:hover{background:var(--bg2)}
+.track.playing{background:var(--accent-weak)}
+.track.playing .nm{color:#0b7a73;font-weight:600}
+.track .idx{
+  width:26px;text-align:right;color:var(--dim);font-variant-numeric:tabular-nums;
+  font-size:12px;flex:0 0 26px;
+}
+.track .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.track .dur{color:var(--dim);font-variant-numeric:tabular-nums;font-size:12px;flex:0 0 auto}
+.track .badge{
+  font-size:10.5px;padding:2px 7px;border-radius:20px;
+  background:var(--blue-weak);color:var(--blue);font-weight:600;flex:0 0 auto;
+}
+.track .badge.low{background:var(--warn-weak);color:var(--warn)}
+.eq{display:inline-flex;gap:2px;align-items:flex-end;height:12px;width:16px}
+.eq i{width:2.5px;background:var(--accent);border-radius:1px;animation:eq .85s infinite ease-in-out}
+.eq i:nth-child(2){animation-delay:.16s}
+.eq i:nth-child(3){animation-delay:.32s}
+@keyframes eq{0%,100%{height:3px}50%{height:12px}}
+
+/* ================= 播放条 ================= */
+footer{flex:0 0 auto;background:var(--bg);border-top:1px solid var(--line);display:flex;flex-direction:column}
+.info-row{display:flex;align-items:center;gap:12px;padding:10px 16px 0}
+.cover{
+  width:48px;height:48px;border-radius:10px;flex:0 0 48px;
+  background:linear-gradient(135deg,var(--bg3),var(--bg4));
+  border:1px solid var(--line);
+  display:grid;place-items:center;font-size:19px;color:var(--dim);
+  box-shadow:var(--shadow);
+}
+.meta{min-width:0;flex:1}
+.meta .t1{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta .t2{font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+
+.seek-row{display:flex;align-items:center;gap:11px;padding:8px 16px 0}
+.time{font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--dim);width:46px;flex:0 0 46px}
+.time.right{text-align:right}
+.bar{flex:1;height:6px;background:var(--bg4);border-radius:4px;position:relative;cursor:pointer;touch-action:none}
+.bar .buf{position:absolute;left:0;top:0;bottom:0;background:#dfe5ee;border-radius:4px}
+.bar .fill{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px}
+.bar .knob{
+  position:absolute;top:50%;width:12px;height:12px;border-radius:50%;
+  background:#fff;border:2px solid var(--accent);
+  transform:translate(-50%,-50%);opacity:0;transition:opacity .15s;
+  box-shadow:0 1px 4px rgba(16,24,40,.18);
+}
+.bar:hover .knob{opacity:1}
+
+.ctrl-row{
+  display:flex;align-items:center;gap:4px;padding:6px 12px 8px;
+  position:relative;
+}
+.cbtn{
+  width:36px;height:36px;border-radius:50%;display:grid;place-items:center;
+  font-size:16px;color:var(--txt2);transition:.14s;flex:0 0 auto;
+}
+.cbtn:hover{background:var(--bg3);color:var(--txt)}
+.cbtn.active{background:var(--accent-weak);color:var(--accent)}
+.cbtn.big{
+  width:46px;height:46px;background:var(--accent);color:var(--accent-fg);font-size:19px;
+  box-shadow:0 2px 10px rgba(15,157,148,.3);
+}
+.cbtn.big:hover{filter:brightness(1.06)}
+.cbtn.big:active{transform:scale(.96)}
+.right-tools{display:flex;align-items:center;gap:10px;margin-left:auto}
+.vol{width:82px;accent-color:var(--accent)}
+.speeds{padding:4px 7px;font-size:12.5px;background:var(--bg2)}
+
+/* ================= 字幕条 ================= */
+.subs{border-top:1px solid var(--line);background:var(--bg2);display:flex;flex-direction:column;flex:0 0 auto;max-height:36vh}
+.subs.collapsed .subs-body{display:none}
+.subs.collapsed{max-height:none}
+.subs-head{
+  display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:12px;
+  color:var(--txt2);flex:0 0 auto;min-height:42px;
+}
+.subs-head .lbl{display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;color:var(--txt)}
+.subs-head .lbl .car{color:var(--dim);font-size:10px;transition:transform .15s}
+.subs.collapsed .subs-head .lbl .car{transform:rotate(-90deg)}
+.subs-head .src{color:var(--dim);font-size:11px;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.subs-head .conf{color:var(--blue);font-variant-numeric:tabular-nums;font-size:11px;font-weight:600}
+.subs-actions{margin-left:auto;display:flex;align-items:center;gap:4px}
+.icon-btn{
+  display:flex;align-items:center;gap:5px;padding:5px 9px;border-radius:8px;
+  font-size:11.5px;color:var(--txt2);border:1px solid transparent;white-space:nowrap;
+}
+.icon-btn:hover{background:var(--bg3);border-color:var(--line2)}
+.icon-btn.on{background:var(--accent-weak);color:var(--accent);border-color:transparent;font-weight:600}
+.icon-btn svg{width:14px;height:14px}
+
+.subs-body{overflow:auto;padding:2px 0 14px;flex:1;min-height:0}
+.cue{padding:5px 16px;font-size:13.5px;color:var(--txt2);cursor:pointer;line-height:1.6;border-radius:6px}
+.cue:hover{background:var(--bg3);color:var(--txt)}
+.cue.on{color:#0b7a73;font-weight:650;background:var(--accent-weak)}
+.cue .t{color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums;margin-right:9px}
+.subs-empty{padding:16px;color:var(--dim);font-size:12px}
+
+/* ================= 弹窗 ================= */
+.overlay{
+  position:fixed;inset:0;background:rgba(22,26,33,.38);display:none;
+  align-items:center;justify-content:center;z-index:60;
+  backdrop-filter:blur(4px);padding:16px;
+}
+.overlay.show{display:flex}
+.modal{
+  width:min(600px,100%);max-height:92vh;background:var(--bg);
+  border-radius:16px;display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:var(--shadow-lg);
+}
+.modal.wide{width:min(760px,100%)}
+.modal-head{
+  display:flex;align-items:center;gap:10px;padding:14px 18px;
+  border-bottom:1px solid var(--line);font-weight:650;font-size:14px;flex:0 0 auto;
+}
+.modal-head .x{margin-left:auto;color:var(--dim);font-size:22px;line-height:1;padding:0 4px}
+.modal-head .x:hover{color:var(--txt)}
+.modal-body{padding:16px 18px;overflow:auto;flex:1;min-height:0}
+
+.drop{
+  border:2px dashed var(--line2);border-radius:12px;padding:28px 18px;text-align:center;
+  color:var(--dim);transition:.15s;cursor:pointer;background:var(--bg2);
+}
+.drop.hot{border-color:var(--accent);color:var(--accent);background:var(--accent-weak)}
+.drop b{color:var(--txt)}
+.hint{font-size:11.5px;color:var(--dim);margin-top:10px;line-height:1.7}
+.opt-row{
+  display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:12px;
+  color:var(--txt2);cursor:pointer;line-height:1.5;
+}
+.opt-row input[type="checkbox"]{
+  width:15px;height:15px;flex:0 0 15px;margin-top:1px;padding:0;
+  accent-color:var(--accent);cursor:pointer;
+}
+
+/* 已导入压缩包列表 */
+.pkg-wrap{margin-top:16px}
+.pkg-title{
+  display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim);
+  text-transform:uppercase;letter-spacing:.6px;font-weight:600;margin-bottom:8px;
+}
+.pkg-title .n{
+  text-transform:none;letter-spacing:0;color:var(--txt2);
+  background:var(--bg3);border-radius:20px;padding:1px 8px;font-size:11px;
+}
+.pkg-item{
+  position:relative;display:flex;align-items:center;gap:10px;
+  padding:10px 40px 10px 12px;border:1px solid var(--line);border-radius:10px;
+  background:var(--bg);margin-bottom:8px;
+}
+.pkg-item:hover{border-color:var(--line2);background:var(--bg2)}
+.pkg-icon{font-size:16px;flex:0 0 auto;opacity:.7}
+.pkg-main{min-width:0;flex:1}
+.pkg-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pkg-meta{font-size:11px;color:var(--dim);margin-top:2px}
+.pkg-del{
+  position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:7px;
+  display:grid;place-items:center;color:var(--dim);font-size:16px;line-height:1;
+}
+.pkg-del:hover{background:var(--err);color:#fff}
+.pkg-empty{
+  font-size:12px;color:var(--dim);padding:12px;text-align:center;
+  border:1px dashed var(--line2);border-radius:10px;
+}
+.log{
+  margin-top:14px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;
+  padding:11px 12px;font:11.5px/1.75 ui-monospace,SFMono-Regular,Consolas,monospace;
+  max-height:150px;overflow:auto;white-space:pre-wrap;color:var(--txt2);
+}
+.log .ok{color:#0b7a73;font-weight:600}
+.log .wr{color:var(--warn)}
+.log .er{color:var(--err)}
+.log .dm{color:var(--dim)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:9px;margin-top:14px}
+.stat{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.stat b{display:block;font-size:19px;font-variant-numeric:tabular-nums;line-height:1.2}
+.stat span{font-size:11px;color:var(--dim)}
+.proto{width:100%;border-collapse:collapse;font-size:12px;margin-top:12px}
+.proto td{padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top}
+.proto td:first-child{color:var(--dim);white-space:nowrap;width:112px}
+.proto code{font:11px ui-monospace,Consolas,monospace;color:var(--blue);word-break:break-all}
+
+.btn{
+  padding:8px 15px;border-radius:9px;background:var(--bg);border:1px solid var(--line2);
+  font-size:13px;font-weight:500;transition:.14s;white-space:nowrap;
+}
+.btn:hover{border-color:#b9c2cf;background:var(--bg2)}
+.btn.pri{background:var(--accent);color:var(--accent-fg);border-color:transparent;font-weight:600}
+.btn.pri:hover{filter:brightness(1.06);background:var(--accent)}
+.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.qrow{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);font-size:13px}
+.qrow.cur{color:#0b7a73;font-weight:600}
+.qrow .qn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qrow .qx{color:var(--dim);font-size:13px;padding:2px 6px;border-radius:6px}
+.qrow .qx:hover{background:var(--bg3);color:var(--err)}
+.empty{padding:44px 20px;text-align:center;color:var(--dim);font-size:13px;line-height:2}
+
+/* 脚本致命错误提示条（防止静默失败） */
+#errbar{
+  display:none;position:fixed;left:0;right:0;top:0;z-index:999;
+  background:#fdecec;color:#b91c1c;border-bottom:1px solid #f5c2c2;
+  padding:9px 14px;font-size:12.5px;line-height:1.5;
+  padding-top:calc(9px + env(safe-area-inset-top,0px));
+}
+#errbar b{font-weight:700}
+
+/* ================= 字幕全览 ================= */
+.board-top{
+  display:flex;align-items:center;gap:14px;padding:11px 18px;
+  border-bottom:1px solid var(--line);background:var(--bg2);flex:0 0 auto;
+}
+.board-time{font-variant-numeric:tabular-nums;font-size:13px;font-weight:650;color:var(--txt)}
+.board-time span{color:var(--dim);font-weight:400}
+.board-bar{flex:1;height:5px;background:var(--bg4);border-radius:3px;position:relative;overflow:hidden}
+.board-bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:3px;transition:width .12s linear}
+.board-body{overflow:auto;flex:1;min-height:0;padding:6px 0 16px}
+.brow{
+  display:flex;gap:12px;padding:7px 18px;cursor:pointer;font-size:13.5px;line-height:1.55;
+  color:var(--txt2);border-left:3px solid transparent;
+}
+.brow:hover{background:var(--bg2)}
+.brow.on{background:var(--accent-weak);border-left-color:var(--accent);color:#0b7a73;font-weight:650}
+.brow .bt{
+  font-variant-numeric:tabular-nums;color:var(--dim);font-size:11.5px;
+  flex:0 0 52px;padding-top:2px;
+}
+.brow.on .bt{color:var(--accent)}
+.brow .bx{flex:1;min-width:0;word-break:break-word}
+
+/* PiP 宿主（原站同款：1px 隐藏容器） */
+#pip-subtitle-container{position:absolute;width:1px;height:1px;overflow:hidden;top:0;left:0}
+#pip-subtitle-container canvas{display:none}
+#pip-subtitle-container video{display:none}
+
+/* 真 PiP 不可用时的页内浮动字幕（降级） */
+.float-sub{
+  position:fixed;right:16px;bottom:104px;z-index:55;display:none;
+  max-width:min(360px,72vw);background:#fff;color:#000;
+  border:1px solid var(--line2);border-radius:14px;
+  padding:12px 34px 12px 14px;font-size:15px;line-height:1.45;font-weight:650;
+  box-shadow:0 8px 28px rgba(16,24,40,.18);
+}
+.float-sub.show{display:block}
+.float-sub .fx{
+  position:absolute;top:6px;right:8px;color:var(--dim);font-size:16px;line-height:1;
+  padding:2px 4px;border-radius:6px;
+}
+.float-sub .fx:hover{background:var(--bg3);color:var(--txt)}
+@media (max-width:760px){
+  .float-sub{right:12px;bottom:calc(118px + env(safe-area-inset-bottom,0px));font-size:16px;max-width:78vw}
+}
+
+/* ================= 移动端 ================= */
+@media (max-width: 760px){
+  header{padding:8px 12px;gap:7px}
+  .logo{font-size:14px}
+  .tag{display:none}
+  .btn{padding:8px 12px;font-size:12.5px;flex:0 0 auto}
+  header{gap:5px}
+  .logo{flex:0 0 auto}
+  .logo-txt{display:none}
+  #btnImport,#btnPkgs,#btnQueue,#btnAbout{padding:7px 9px;font-size:12px}
+  main{flex-direction:column}
+  aside{
+    width:auto;flex:0 0 auto;max-height:106px;
+    border-right:none;border-bottom:1px solid var(--line);overflow:hidden;
+  }
+  aside.is-empty{max-height:104px}
+  .pane-head{padding:7px 12px;font-size:11px}
+  .tree{
+    display:flex;overflow-x:auto;overflow-y:hidden;padding:7px 10px 9px;gap:7px;
+    white-space:nowrap;-webkit-overflow-scrolling:touch;
+  }
+  .tree .empty{flex:1 0 100%;padding:4px 2px 0;font-size:12px;line-height:1.6;text-align:left;white-space:normal}
+  .tree .empty b{color:var(--txt)}
+  .node{flex:0 0 auto;border:1px solid var(--line);background:var(--bg);max-width:210px;padding-right:32px}
+  .node.child,.node.grandchild{padding-left:9px}
+  .node-del{opacity:1;top:2px;right:3px;width:22px;height:22px;font-size:12px}
+  section.center{flex:1;min-height:0}
+  .track{padding:12px 13px;gap:9px}
+  .info-row{padding:9px 13px 0}
+  .cover{width:42px;height:42px;flex:0 0 42px}
+  .seek-row{padding:9px 13px 0}
+  .bar{height:7px}
+  .bar .knob{opacity:1;width:14px;height:14px}
+  .ctrl-row{padding:7px 10px 9px;gap:2px}
+  .cbtn{width:40px;height:40px;font-size:17px}
+  .cbtn.big{width:50px;height:50px;font-size:20px}
+  .right-tools{gap:7px}
+  .vol{display:none}
+  .speeds{padding:4px 6px;font-size:12px}
+  .subs{max-height:40vh}
+  .subs-head{padding:7px 12px;gap:6px;flex-wrap:wrap;min-height:44px}
+  .subs-head .src{display:none}
+  .subs-actions{gap:2px}
+  .icon-btn{padding:6px 8px;font-size:11px}
+  .icon-btn .txt{display:none}
+  .cue{padding:7px 13px;font-size:14px}
+  .modal{width:100%;max-height:88vh;border-radius:14px}
+  .modal-body{padding:13px}
+  .brow{padding:9px 14px;font-size:14px}
+  footer{padding-bottom:env(safe-area-inset-bottom,0px)}
+}
+@media (max-width: 760px) and (orientation: landscape){
+  aside{max-height:0;border:none}
+  .subs{max-height:34vh}
+}
+</style>
+</head>
+<body>
+<div id="errbar"><b>页面脚本出错</b>，部分功能可能失效。请刷新页面；若反复出现，把这条信息反馈过来：<span id="errmsg"></span></div>
+<div id="app">
+  <header>
+    <div class="logo"><i>♪</i><span class="logo-txt">ASMR <b>Player</b></span></div>
+    <span class="tag">reverse-engineered · local</span>
+    <div class="spacer"></div>
+    <button class="btn" id="btnImport">导入压缩包</button>
+  </header>
+
+  <main>
+    <aside>
+      <div class="pane-head">
+        <span>资源库</span>
+      </div>
+      <div class="tree" id="tree">
+        <div class="empty" id="treeEmpty">还没有任何内容<br>点右上角 <b>导入压缩包</b><br><span style="font-size:11px">支持 zip（含嵌套 zip）</span></div>
+      </div>
+    </aside>
+
+    <section class="center">
+      <div class="pane-head">
+        <span id="listTitle">播放列表</span>
+        <div class="spacer"></div>
+        <span id="listMeta" style="font-size:11px;text-transform:none;letter-spacing:0"></span>
+      </div>
+      <div class="list-wrap" id="list">
+        <div class="empty">左侧选择文件夹查看曲目<br><span style="font-size:11px">点曲目即开始播放</span></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="info-row">
+      <div class="cover" id="cover">♪</div>
+      <div class="meta">
+        <div class="t1" id="npTitle">未在播放</div>
+        <div class="t2" id="npSub">—</div>
+      </div>
+    </div>
+
+    <div class="seek-row">
+      <span class="time" id="tCur">0:00</span>
+      <div class="bar" id="seekBar">
+        <div class="buf" id="seekBuf" style="width:0"></div>
+        <div class="fill" id="seekFill" style="width:0"></div>
+        <div class="knob" id="seekKnob" style="left:0"></div>
+      </div>
+      <span class="time right" id="tDur">0:00</span>
+    </div>
+
+    <div class="ctrl-row">
+      <button class="cbtn" id="btnPrev" title="上一首">⏮</button>
+      <button class="cbtn big" id="btnPlay" title="播放 / 暂停">▶</button>
+      <button class="cbtn" id="btnNext" title="下一首">⏭</button>
+      <button class="cbtn" id="btnLoop" title="循环模式">↻</button>
+      <div class="right-tools">
+        <span class="cbtn" id="btnVol" title="静音" style="font-size:14px">🔊</span>
+        <input type="range" class="vol" id="vol" min="0" max="1" step="0.01" value="1">
+        <select class="speeds" id="speed">
+          <option value="0.5">0.5×</option>
+          <option value="0.75">0.75×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+          <option value="1.75">1.75×</option>
+          <option value="2">2×</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="subs collapsed" id="subs">
+      <div class="subs-head">
+        <span class="lbl" id="subsToggle"><span class="car">▾</span>字幕</span>
+        <span class="src" id="subsName"></span>
+        <span class="conf" id="subsConf"></span>
+        <div class="subs-actions">
+          <button class="icon-btn" id="btnBoard" title="查看全部字幕与播放位置">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+            <span class="txt">全部字幕</span>
+          </button>
+          <button class="icon-btn" id="btnPip" title="画中画显示字幕">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="8" height="6" rx="1" fill="currentColor" stroke="none"/></svg>
+            <span class="txt">画中画</span>
+          </button>
+        </div>
+      </div>
+      <div class="subs-body" id="subsBody">
+        <div class="subs-empty">当前曲目没有匹配到字幕</div>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<!-- PiP 宿主：与 asmr.one 相同的 canvas → captureStream → video 结构 -->
+<div id="pip-subtitle-container">
+  <canvas id="pipCanvas"></canvas>
+  <video id="pipVideo" muted playsinline></video>
+</div>
+
+<!-- 页内浮动字幕（真 PiP 不可用时的降级） -->
+<div class="float-sub" id="floatSub">
+  <span id="floatSubText"></span>
+  <button class="fx" id="floatSubClose">×</button>
+</div>
+
+<!-- 导入 -->
+<div class="overlay" id="ovImport">
+  <div class="modal">
+    <div class="modal-head">导入压缩包 <button class="x" data-close="ovImport">×</button></div>
+    <div class="modal-body">
+      <div class="drop" id="drop">
+        把 <b>.zip</b> 拖到这里，或<b>点击选择</b><br>
+        <span class="hint">音频 mp3 / flac / wav / ogg / m4a / aac / opus / aiff<br>字幕 lrc / vtt / srt / ass / ssa</span>
+      </div>
+      <input type="file" id="fileInput" accept=".zip" multiple hidden>
+      <label class="opt-row">
+        <input type="checkbox" id="saveAudio" checked>
+        <span>保存音频到浏览器（下次打开免重新导入）</span>
+      </label>
+      <label class="opt-row">
+        <input type="checkbox" id="forceReimport">
+        <span>强制重新导入（忽略「已导入」判断，重建全部索引）</span>
+      </label>
+      <div class="hint" id="storageInfo" style="margin-top:10px"></div>
+      <div class="stats" id="impStats"></div>
+      <div class="log" id="impLog" style="display:none"></div>
+
+      <button class="btn" id="btnManagePkgs" style="width:100%;margin-top:14px;text-align:center">
+        管理已导入的压缩包（<span id="pkgLinkCount">0</span>）
+      </button>
+
+      <div class="hint">
+        流程复刻原站：校验 → 递归解压 → 分类 → 建索引 → 字幕相似度匹配 → 落库。嵌套 zip 逐层解开，<code>__MACOSX</code> 自动跳过。
+      </div>
+
+      <div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--line);text-align:center">
+        <button id="btnWipeAll" style="font-size:11.5px;color:var(--dim);padding:4px 8px;border-radius:6px">清空全部本地数据</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 队列 -->
+<div class="overlay" id="ovQueue">
+  <div class="modal">
+    <div class="modal-head">播放队列 <button class="x" data-close="ovQueue">×</button></div>
+    <div class="modal-body" id="queueBody"><div class="subs-empty">队列为空</div></div>
+  </div>
+</div>
+
+<!-- 已导入的压缩包（独立入口，可单独删除） -->
+<div class="overlay" id="ovPkgs">
+  <div class="modal">
+    <div class="modal-head">
+      已导入的压缩包
+      <span id="pkgCount" style="font-weight:400;font-size:11.5px;color:var(--dim)"></span>
+      <button class="x" data-close="ovPkgs">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="pkgList"><div class="pkg-empty">还没有导入过压缩包</div></div>
+      <div class="hint">
+        点每个包右上角的 <b>✕</b> 可以单独删除。删除会移除这个包的字幕记录与关联索引；
+        音频本来就不在库里，不受影响（刷新页面后才会从列表消失）。
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 字幕全览 -->
+<div class="overlay" id="ovBoard">
+  <div class="modal wide">
+    <div class="modal-head">
+      全部字幕
+      <span id="boardMeta" style="font-weight:400;font-size:11.5px;color:var(--dim)"></span>
+      <button class="x" data-close="ovBoard">×</button>
+    </div>
+    <div class="board-top">
+      <div class="board-time"><span id="boardCur">0:00</span> <span>/ <span id="boardDur">0:00</span></span></div>
+      <div class="board-bar"><i id="boardFill" style="width:0"></i></div>
+      <div style="font-size:11.5px;color:var(--dim)" id="boardOffset">偏移 0.0s</div>
+    </div>
+    <div class="board-body" id="boardBody"></div>
+  </div>
+</div>
+
+<!-- 说明 -->
+<div class="overlay" id="ovAbout">
+  <div class="modal wide">
+    <div class="modal-head">逆向说明 <button class="x" data-close="ovAbout">×</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--txt2);line-height:1.75">
+        基于 <code>www.asmr.one</code> 线上包（Quasar/Vue + Vuex，含 20 个异步 chunk）静态分析复刻，聚焦播放器与压缩包导入两条链路。
+      </p>
+      <table class="proto">
+        <tr><td>媒体流</td><td><code>{apiHost}/api/media/stream/{hash}?token={jwt}</code></td></tr>
+        <tr><td>媒体下载</td><td><code>{apiHost}/api/media/download/{hash}?token={jwt}</code></td></tr>
+        <tr><td>封面</td><td><code>{apiHost}/api/cover/{workId}.jpg?type=main|sam|240x240</code></td></tr>
+        <tr><td>接口</td><td><code>GET /api/work/{id}</code>、<code>GET /api/tracks/{id}?v=2</code></td></tr>
+        <tr><td>API 多源</td><td>api.asmr-200.com（latest）/ api.asmr.one（original）/ api.asmr-100.com / api.asmr-300.com</td></tr>
+        <tr><td>播放状态机</td><td>命令信号 <code>wantPlay / wantPause / wantSeek</code>，消费后重置</td></tr>
+        <tr><td>字幕模式</td><td><code>subtitleDisplayMode: in-app | pip</code></td></tr>
+        <tr><td>画中画</td><td>隐藏 canvas（2×视口宽，20:3）→ <code>captureStream(0)</code> → video → PiP；每次歌词变化 <code>requestFrame()</code> 推帧；优先 Document PiP（480×120），回退 Video PiP</td></tr>
+        <tr><td>字幕表</td><td><code>subtitle_package</code> / <code>subtitle_content</code> / <code>subtitle_record</code></td></tr>
+      </table>
+      <div class="hint">
+        本页为本地模式：压缩包内的音频与字幕全部留在浏览器内，blob URL 播放，数据存 IndexedDB。
+        画中画在非 HTTPS 的局域网地址下会自动走 Video PiP 通道（Document PiP 需安全上下文）。
+      </div>
+    </div>
+  </div>
+</div>
+
+<audio id="audio" preload="metadata"></audio>
+
+<script>
+"use strict";
+/* =========================================================================
+ *  ASMR 播放器 —— 逆向复刻（含 asmr.one 同款 PiP 字幕）
+ * ========================================================================= */
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+/* 脚本错误可见化：任何未捕获异常都在顶部横幅提示，避免"按钮点了没反应"却毫无线索 */
+(function watchErrors() {
+  const show = (text) => {
+    const bar = document.getElementById("errbar");
+    const msg = document.getElementById("errmsg");
+    if (!bar) return;
+    bar.style.display = "block";
+    if (msg) msg.textContent = String(text).slice(0, 220);
+  };
+  window.addEventListener("error", (ev) => show((ev.message || "unknown") + (ev.filename ? " @" + String(ev.lineno || "") : "")));
+  window.addEventListener("unhandledrejection", (ev) => {
+    const r = ev.reason;
+    show((r && (r.message || r)) || "unhandled rejection");
+  });
+})();
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const fmtTime = (s) => {
+  if (!isFinite(s) || s < 0) s = 0;
+  const m = Math.floor(s / 60);
+  return m + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+};
+const fmtTimeMs = (s) => {
+  const v = isFinite(s) && s > 0 ? s : 0;
+  const m = Math.floor(v / 60);
+  const sec = Math.floor(v % 60);
+  return String(m).padStart(2, "0") + ":" + String(sec).padStart(2, "0");
+};
+
+/* ----------------------------- SHA-256 ----------------------------- */
+const SECURE_CRYPTO = (() => {
+  try { return !!(window.isSecureContext && crypto && crypto.subtle && crypto.subtle.digest); }
+  catch (e) { return false; }
+})();
+const SHA256_K = new Uint32Array([
+  0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+  0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+  0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+  0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+  0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+  0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+  0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,
+]);
+const rotr32 = (x, n) => (x >>> n) | (x << (32 - n));
+function sha256HexJS(bytes) {
+  const H = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+  const w = new Uint32Array(64);
+  const len = bytes.length;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const compress = () => {
+    for (let i = 16; i < 64; i++) {
+      const a15 = w[i - 15], a2 = w[i - 2];
+      const s0 = rotr32(a15, 7) ^ rotr32(a15, 18) ^ (a15 >>> 3);
+      const s1 = rotr32(a2, 17) ^ rotr32(a2, 19) ^ (a2 >>> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+    }
+    let a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+    for (let i = 0; i < 64; i++) {
+      const S1 = rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (h + S1 + ch + SHA256_K[i] + w[i]) >>> 0;
+      const S0 = rotr32(a, 2) ^ rotr32(a, 13) ^ rotr32(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const t2 = (S0 + maj) >>> 0;
+      h = g; g = f; f = e; e = (d + t1) >>> 0;
+      d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+    }
+    H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0;
+    H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+    H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0;
+    H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+  };
+  let off = 0;
+  while (len - off >= 64) {
+    for (let i = 0; i < 16; i++) w[i] = view.getUint32(off + i * 4);
+    compress();
+    off += 64;
+  }
+  const rem = len - off;
+  const tail = new Uint8Array(rem < 56 ? 64 : 128);
+  tail.set(bytes.subarray(off));
+  tail[rem] = 0x80;
+  const dvTail = new DataView(tail.buffer);
+  const bitLen = len * 8;
+  dvTail.setUint32(tail.length - 8, Math.floor(bitLen / 4294967296));
+  dvTail.setUint32(tail.length - 4, bitLen >>> 0);
+  for (let b = 0; b * 64 < tail.length; b++) {
+    for (let i = 0; i < 16; i++) w[i] = dvTail.getUint32(b * 64 + i * 4);
+    compress();
+  }
+  let hex = "";
+  for (let i = 0; i < 8; i++) hex += H[i].toString(16).padStart(8, "0");
+  return hex;
+}
+async function sha256Hex(buf) {
+  if (SECURE_CRYPTO) {
+    try {
+      const d = await crypto.subtle.digest("SHA-256", buf);
+      return Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch (e) {}
+  }
+  return sha256HexJS(buf instanceof Uint8Array ? buf : new Uint8Array(buf));
+}
+
+/* --------------------------- 文本编码 --------------------------- */
+function decodeText(bytes) {
+  const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  for (const enc of ["utf-8", "shift_jis", "gbk"]) {
+    try { return { text: new TextDecoder(enc, { fatal: true }).decode(buf), encoding: enc }; } catch (e) {}
+  }
+  return { text: new TextDecoder("utf-8").decode(buf), encoding: "utf-8(lossy)" };
+}
+
+/* ----------------------------- ZIP ----------------------------- */
+const ZIP_SIG_EOCD = 0x06054b50, ZIP_SIG_CD = 0x02014b50, ZIP_SIG_LOCAL = 0x04034b50;
+
+function decodeZipName(bytes, flags) {
+  if (flags & 0x800) return new TextDecoder("utf-8").decode(bytes);
+  for (const enc of ["utf-8", "gbk", "shift_jis"]) {
+    try { return new TextDecoder(enc, { fatal: true }).decode(bytes); } catch (e) {}
+  }
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+function listZipEntries(buf) {
+  const dv = new DataView(buf);
+  const tail = Math.min(buf.byteLength, 65930);
+  let eocd = -1;
+  for (let i = buf.byteLength - 22; i >= buf.byteLength - tail; i--) {
+    if (dv.getUint32(i, true) === ZIP_SIG_EOCD) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error("不是有效的 ZIP 文件（找不到中央目录）");
+  const total = dv.getUint16(eocd + 10, true);
+  const cdOff = dv.getUint32(eocd + 16, true);
+  const out = [];
+  let p = cdOff;
+  for (let i = 0; i < total; i++) {
+    if (p + 46 > buf.byteLength || dv.getUint32(p, true) !== ZIP_SIG_CD) break;
+    const flags = dv.getUint16(p + 8, true);
+    const method = dv.getUint16(p + 10, true);
+    const compSize = dv.getUint32(p + 20, true);
+    const nameLen = dv.getUint16(p + 28, true);
+    const extraLen = dv.getUint16(p + 30, true);
+    const cmtLen = dv.getUint16(p + 32, true);
+    const localOff = dv.getUint32(p + 42, true);
+    const name = decodeZipName(new Uint8Array(buf, p + 46, nameLen), flags);
+    p += 46 + nameLen + extraLen + cmtLen;
+    if (name.endsWith("/")) continue;
+    if (name.includes("__MACOSX")) continue;
+    if (name.split("/").pop().startsWith("._")) continue;
+    out.push({ name, method, compSize, localOff });
+  }
+  return out;
+}
+
+const NATIVE_INFLATE_OK = (() => {
+  try { new DecompressionStream("deflate-raw"); return true; } catch (e) { return false; }
+})();
+
+const LEN_BASE = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+const LEN_EXTRA = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+const DIST_BASE = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+const DIST_EXTRA = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+const CLC_ORDER = [16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
+
+function inflateRaw(data) {
+  let pos = 0, bitBuf = 0, bitCnt = 0;
+  let out = new Uint8Array(Math.max(1024, data.length * 4));
+  let outLen = 0;
+  const grow = (need) => {
+    if (outLen + need <= out.length) return;
+    let cap = out.length;
+    while (cap < outLen + need) cap *= 2;
+    const n = new Uint8Array(cap);
+    n.set(out.subarray(0, outLen));
+    out = n;
+  };
+  const getBit = () => {
+    if (bitCnt === 0) { bitBuf = data[pos++]; bitCnt = 8; }
+    const b = bitBuf & 1; bitBuf >>= 1; bitCnt--;
+    return b;
+  };
+  const getBits = (n) => { let v = 0; for (let i = 0; i < n; i++) v |= getBit() << i; return v; };
+  const buildTree = (lengths) => {
+    let maxBits = 0;
+    for (const l of lengths) if (l > maxBits) maxBits = l;
+    const blCount = new Array(maxBits + 1).fill(0);
+    for (const l of lengths) if (l) blCount[l]++;
+    const nextCode = new Array(maxBits + 1).fill(0);
+    let code = 0;
+    for (let bits = 1; bits <= maxBits; bits++) {
+      code = (code + blCount[bits - 1]) << 1;
+      nextCode[bits] = code;
+    }
+    const map = new Map();
+    for (let i = 0; i < lengths.length; i++) {
+      const len = lengths[i];
+      if (!len) continue;
+      map.set(len * 100000 + nextCode[len], i);
+      nextCode[len]++;
+    }
+    return { map, maxBits };
+  };
+  const decodeSym = (tree) => {
+    let code = 0;
+    for (let len = 1; len <= tree.maxBits; len++) {
+      code = (code << 1) | getBit();
+      const s = tree.map.get(len * 100000 + code);
+      if (s !== undefined) return s;
+    }
+    throw new Error("inflate: 无效 Huffman 编码");
+  };
+  let fixedLit = null, fixedDist = null;
+  let last = 0;
+  while (!last) {
+    last = getBit();
+    const type = getBits(2);
+    if (type === 0) {
+      bitCnt = 0;
+      const len = data[pos] | (data[pos + 1] << 8);
+      pos += 4;
+      grow(len);
+      out.set(data.subarray(pos, pos + len), outLen);
+      outLen += len; pos += len;
+      continue;
+    }
+    let litTree, distTree;
+    if (type === 1) {
+      if (!fixedLit) {
+        const l = new Array(288);
+        for (let i = 0; i < 144; i++) l[i] = 8;
+        for (let i = 144; i < 256; i++) l[i] = 9;
+        for (let i = 256; i < 280; i++) l[i] = 7;
+        for (let i = 280; i < 288; i++) l[i] = 8;
+        fixedLit = buildTree(l);
+        fixedDist = buildTree(new Array(30).fill(5));
+      }
+      litTree = fixedLit; distTree = fixedDist;
+    } else if (type === 2) {
+      const hlit = getBits(5) + 257;
+      const hdist = getBits(5) + 1;
+      const hclen = getBits(4) + 4;
+      const clc = new Array(19).fill(0);
+      for (let i = 0; i < hclen; i++) clc[CLC_ORDER[i]] = getBits(3);
+      const clTree = buildTree(clc);
+      const lengths = [];
+      while (lengths.length < hlit + hdist) {
+        const sym = decodeSym(clTree);
+        if (sym < 16) lengths.push(sym);
+        else if (sym === 16) { const prev = lengths[lengths.length - 1] || 0; let rep = 3 + getBits(2); while (rep--) lengths.push(prev); }
+        else if (sym === 17) { let rep = 3 + getBits(3); while (rep--) lengths.push(0); }
+        else { let rep = 11 + getBits(7); while (rep--) lengths.push(0); }
+      }
+      litTree = buildTree(lengths.slice(0, hlit));
+      distTree = buildTree(lengths.slice(hlit, hlit + hdist));
+    } else { throw new Error("inflate: 非法块类型"); }
+    for (;;) {
+      const sym = decodeSym(litTree);
+      if (sym < 256) { grow(1); out[outLen++] = sym; }
+      else if (sym === 256) break;
+      else {
+        const li = sym - 257;
+        if (li >= LEN_BASE.length) throw new Error("inflate: 长度码越界");
+        const len = LEN_BASE[li] + (LEN_EXTRA[li] ? getBits(LEN_EXTRA[li]) : 0);
+        const di = decodeSym(distTree);
+        if (di >= DIST_BASE.length) throw new Error("inflate: 距离码越界");
+        const dist = DIST_BASE[di] + (DIST_EXTRA[di] ? getBits(DIST_EXTRA[di]) : 0);
+        grow(len);
+        let from = outLen - dist;
+        if (from < 0) throw new Error("inflate: 距离超出输出窗口");
+        for (let i = 0; i < len; i++) out[outLen++] = out[from++];
+      }
+    }
+  }
+  return out.slice(0, outLen);
+}
+
+async function extractZipEntry(buf, entry) {
+  const dv = new DataView(buf);
+  const lo = entry.localOff;
+  if (dv.getUint32(lo, true) !== ZIP_SIG_LOCAL) throw new Error("本地文件头损坏: " + entry.name);
+  const nameLen = dv.getUint16(lo + 26, true);
+  const extraLen = dv.getUint16(lo + 28, true);
+  const start = lo + 30 + nameLen + extraLen;
+  const comp = new Uint8Array(buf, start, entry.compSize);
+  if (entry.method === 0) return comp.slice();
+  if (entry.method === 8) {
+    if (NATIVE_INFLATE_OK && !window.__forceFallback) {
+      const ds = new DecompressionStream("deflate-raw");
+      const stream = new Blob([comp]).stream().pipeThrough(ds);
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+    return inflateRaw(comp);
+  }
+  throw new Error("不支持的压缩算法 method=" + entry.method + "（" + entry.name + "）");
+}
+
+/* --------------------------- 字幕解析 --------------------------- */
+const RE_TIME_LRC = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g;
+
+function parseLRC(text) {
+  const cues = [];
+  for (const line of text.split(/\r?\n/)) {
+    const tags = [];
+    let m;
+    RE_TIME_LRC.lastIndex = 0;
+    while ((m = RE_TIME_LRC.exec(line))) {
+      tags.push((+m[1]) * 60 + (+m[2]) + (m[3] ? +("0." + m[3]) : 0));
+    }
+    if (!tags.length) continue;
+    const body = line.replace(RE_TIME_LRC, "").trim();
+    if (!body) continue;
+    for (const t of tags) cues.push({ start: t, end: t + 6, text: body });
+  }
+  cues.sort((a, b) => a.start - b.start);
+  for (let i = 0; i < cues.length - 1; i++) cues[i].end = cues[i + 1].start;
+  return cues;
+}
+
+function parseTimed(text, withHours) {
+  const cues = [];
+  const toSec = (s) => {
+    const re = withHours ? /(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{1,3})/ : /(\d{1,2}):(\d{2})[.,](\d{1,3})/;
+    const m = s.trim().match(re);
+    if (!m) return null;
+    return withHours
+      ? (+(m[1] || 0)) * 3600 + (+m[2]) * 60 + (+m[3]) + (+m[4]) / 1000
+      : (+m[1]) * 60 + (+m[2]) + (+m[3]) / 1000;
+  };
+  for (const b of text.replace(/\r/g, "").split(/\n{2,}/)) {
+    const lines = b.split("\n");
+    const ti = lines.findIndex((l) => l.includes("-->"));
+    if (ti < 0) continue;
+    const [a, z] = lines[ti].split("-->");
+    const st = toSec(a), en = toSec(z);
+    if (st == null || en == null) continue;
+    const body = lines.slice(ti + 1).join("\n").replace(/<[^>]+>/g, "").trim();
+    if (body) cues.push({ start: st, end: en, text: body });
+  }
+  return cues;
+}
+
+function parseASS(text) {
+  const cues = [];
+  const toSec = (s) => {
+    const m = s.trim().match(/(\d+):(\d{2}):(\d{2})[.:](\d{1,3})/);
+    if (!m) return null;
+    return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) + (+m[4]) / 100;
+  };
+  let inEvents = false, textIdx = -1, startIdx = -1, endIdx = -1;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (/^\[events\]/i.test(line)) { inEvents = true; continue; }
+    if (/^\[/.test(line)) { inEvents = false; continue; }
+    if (!inEvents) continue;
+    if (/^format\s*:/i.test(line)) {
+      const cols = line.slice(line.indexOf(":") + 1).split(",").map((s) => s.trim().toLowerCase());
+      startIdx = cols.indexOf("start"); endIdx = cols.indexOf("end"); textIdx = cols.indexOf("text");
+      continue;
+    }
+    if (/^dialogue\s*:/i.test(line) && startIdx >= 0) {
+      const parts = line.slice(line.indexOf(":") + 1).split(",");
+      const st = toSec(parts[startIdx] || ""), en = toSec(parts[endIdx] || "");
+      const txt = parts.slice(textIdx).join(",").replace(/\{[^}]*\}/g, "").replace(/\\N/gi, "\n").trim();
+      if (st != null && en != null && txt) cues.push({ start: st, end: en, text: txt });
+    }
+  }
+  cues.sort((a, b) => a.start - b.start);
+  return cues;
+}
+
+function parseSubtitle(text, filename) {
+  const ext = (filename.split(".").pop() || "").toLowerCase();
+  if (ext === "lrc") return parseLRC(text);
+  if (ext === "vtt") return parseTimed(text, true);
+  if (ext === "srt") return parseTimed(text, true);
+  if (ext === "ass" || ext === "ssa") return parseASS(text);
+  return [];
+}
+
+/* --------------------------- 文件名匹配 --------------------------- */
+const RE_RJ = /\b(?:rj|rjv)\s*(\d{4,8})\b/i;
+function extractProductIds(path) {
+  const m = path.match(RE_RJ);
+  if (!m) return [];
+  return ["RJ" + String(parseInt(m[1], 10)).padStart(8, "0")];
+}
+function normName(s) {
+  return s.replace(/\.[a-z0-9]{2,5}$/i, "")
+    .replace(/\[[^\]]*\]/g, " ").replace(/【[^】]*】/g, " ")
+    .replace(/\([^)]*\)/g, " ").replace(/（[^）]*）/g, " ")
+    .replace(/[_\-–—.]+/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+}
+function tokenize(s) {
+  const out = new Set();
+  const low = normName(s);
+  for (const w of low.match(/[a-z]{2,}|\d{1,4}/g) || []) out.add(w);
+  const cjk = low.replace(/[^\u3040-\u30ff\u4e00-\u9fff]/g, "");
+  for (let i = 0; i < cjk.length - 1; i++) out.add(cjk.slice(i, i + 2));
+  return out;
+}
+function dice(a, b) {
+  if (!a.size || !b.size) return 0;
+  let hit = 0;
+  for (const x of a) if (b.has(x)) hit++;
+  return (2 * hit) / (a.size + b.size);
+}
+function confidenceOf(subPath, trackPath) {
+  let score = dice(tokenize(subPath), tokenize(trackPath));
+  const numOf = (p) => { const m = normName(p).match(/\b0*(\d{1,3})\b/); return m ? parseInt(m[1], 10) : null; };
+  const na = numOf(subPath), nb = numOf(trackPath);
+  if (na != null && nb != null && na === nb) score += 0.15;
+  const ra = extractProductIds(subPath)[0], rb = extractProductIds(trackPath)[0];
+  if (ra && rb && ra === rb) score += 0.2;
+  return clamp(score, 0, 1);
+}
+
+/* --------------------------- IndexedDB --------------------------- */
+const DB_NAME = "asmrone_local", DB_VER = 2;
+let dbPromise = null;
+function openDB() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains("subtitle_package")) {
+        db.createObjectStore("subtitle_package", { keyPath: "id", autoIncrement: true })
+          .createIndex("file_hash", "file_hash", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("subtitle_content")) {
+        db.createObjectStore("subtitle_content", { keyPath: "id", autoIncrement: true })
+          .createIndex("file_hash", "file_hash", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("subtitle_record")) {
+        const s = db.createObjectStore("subtitle_record", { keyPath: "id", autoIncrement: true });
+        s.createIndex("product_ids", "product_ids", { multiEntry: true, unique: false });
+        s.createIndex("subtitle_package_id", "subtitle_package_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("track")) {
+        db.createObjectStore("track", { keyPath: "id", autoIncrement: true })
+          .createIndex("path", "path", { unique: false });
+      }
+      /* v2：音频本体（Blob）真正落盘，下次打开免重导 */
+      if (!db.objectStoreNames.contains("audio")) {
+        const s = db.createObjectStore("audio", { keyPath: "path" });
+        s.createIndex("workId", "workId", { unique: false });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return dbPromise;
+}
+async function dbGetAll(store) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const r = db.transaction(store, "readonly").objectStore(store).getAll();
+    r.onsuccess = () => res(r.result || []);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function dbAdd(store, value) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const r = db.transaction(store, "readwrite").objectStore(store).add(value);
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function dbPut(store, value) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const r = db.transaction(store, "readwrite").objectStore(store).put(value);
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function dbDelete(store, key) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const r = db.transaction(store, "readwrite").objectStore(store).delete(key);
+    r.onsuccess = () => res();
+    r.onerror = () => rej(r.error);
+  });
+}
+async function dbClearAll() {
+  const db = await openDB();
+  const names = ["subtitle_package", "subtitle_content", "subtitle_record", "track", "audio"];
+  return new Promise((res, rej) => {
+    const t = db.transaction(names.filter((n) => db.objectStoreNames.contains(n)), "readwrite");
+    names.forEach((n) => { if (db.objectStoreNames.contains(n)) t.objectStore(n).clear(); });
+    t.oncomplete = () => res();
+    t.onerror = () => rej(t.error);
+  });
+}
+
+/* ------------------------------ 状态 ------------------------------ */
+const State = {
+  queue: [], queueIndex: 0, playing: false,
+  playingControlSignal: "nothing", seekTo: -1,
+  playbackRate: 1, volume: 1, muted: false, loopMode: "off",
+  currentTime: 0, duration: 0,
+  subtitleOffset: 0, selectedLyricIndex: -1,
+  lrcLines: [], currentLrcLineIndex: -1,
+  subsOpen: false,
+  subtitleDisplayMode: "in-app",   /* in-app | pip —— 复刻原站 */
+};
+
+function currentFile() { return State.queue[State.queueIndex] || null; }
+function currentCue() {
+  const i = State.currentLrcLineIndex;
+  return State.lrcLines[i] || null;
+}
+
+function commit(type, payload) {
+  switch (type) {
+    case "SET_PLAYBACK_RATE": State.playbackRate = payload; break;
+    case "WANT_PLAY": State.playingControlSignal = "wantPlay"; break;
+    case "WANT_PAUSE": State.playingControlSignal = "wantPause"; break;
+    case "WANT_SEEK": State.playingControlSignal = "wantSeek"; State.seekTo = payload; break;
+    case "CONSUME_PLAYING_CONTROL_SIGNAL": State.playingControlSignal = "nothing"; State.seekTo = -1; break;
+    case "TOGGLE_WANT_PLAYING":
+      /* 以 audio 的真实状态为准：State.playing 可能与实际播放状态脱钩
+         （例如 PiP 暂停、流被浏览器中断），脱钩时按 State 判断会"越点越停" */
+      State.playingControlSignal = (audio && !audio.paused) ? "wantPause" : "wantPlay";
+      break;
+    case "ON_PLAY": State.playing = true; break;
+    case "ON_PAUSE": State.playing = false; break;
+    case "SET_TRACK":
+      if (payload >= 0 && payload < State.queue.length) { State.queueIndex = payload; State.playingControlSignal = "wantPlay"; }
+      break;
+    case "NEXT_TRACK":
+      if (State.queueIndex < State.queue.length - 1) { State.queueIndex++; State.playingControlSignal = "wantPlay"; }
+      break;
+    case "PREVIOUS_TRACK":
+      if (State.queueIndex > 0) { State.queueIndex--; State.playingControlSignal = "wantPlay"; }
+      break;
+    case "SET_QUEUE":
+      State.queue = payload.queue.slice();
+      State.queueIndex = payload.index;
+      if (payload.resetPlaying) State.playingControlSignal = "wantPlay";
+      break;
+    case "EMPTY_QUEUE": State.playingControlSignal = "wantPause"; State.queue = []; State.queueIndex = 0; break;
+    case "ADD_TO_QUEUE": State.queue.push(payload); break;
+    case "REMOVE_FROM_QUEUE":
+      State.queue.splice(payload, 1);
+      if (payload === State.queueIndex) { State.playingControlSignal = "wantPause"; State.queueIndex = 0; }
+      else if (payload < State.queueIndex) State.queueIndex--;
+      break;
+    case "SET_SUBTITLE_DISPLAY_MODE":
+      State.subtitleDisplayMode = ["in-app", "pip"].includes(payload) ? payload : "in-app";
+      break;
+  }
+  renderAll();
+}
+
+/* ------------------------------ 媒体 ------------------------------ */
+const audio = $("#audio");
+let currentBlobUrl = null;
+
+function attachTrack(track, autoplay) {
+  if (!track) return;
+  if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
+  let src = "";
+  if (track.blob) { currentBlobUrl = URL.createObjectURL(track.blob); src = currentBlobUrl; }
+  else if (track.mediaStreamUrl) src = track.mediaStreamUrl;
+  if (!src) {
+    logLine("没有可播放的媒体源（索引失效，请重新导入）: " + track.path, "er");
+    audio.removeAttribute("src"); audio.load();
+    return;
+  }
+  audio.src = src;
+  audio.playbackRate = State.playbackRate;
+  audio.volume = State.muted ? 0 : State.volume;
+  State.currentTime = 0;
+  State.duration = track.duration || 0;
+  loadSubtitleFor(track);
+  PiP.onTrackChange();
+  if (autoplay) audio.play().catch((e) => logLine("播放被拦截: " + e.message, "wr"));
+  updateMediaSession(track);
+}
+
+function pumpSignal() {
+  if (State.playingControlSignal === "wantPlay") {
+    if (audio.src) {
+      audio.play().catch((e) => {
+        if (!e) return;
+        if (e.name === "NotAllowedError") {
+          logLine("播放被浏览器拦截：需要用户手势，请点一下页面上的播放按钮", "wr");
+        } else if (e.name !== "AbortError") {
+          logLine("播放失败: " + e.name, "er");
+        }
+      });
+    }
+    /* PiP 期间同步让 video 也处于播放态，否则对账会把它当成"用户暂停" */
+    if (typeof PiP !== "undefined" && PiP.started && PiP.currentPiPStatus) {
+      PiP.suppressVideoEvents(320);
+      PiP.video.play().catch(() => {});
+      PiP.requestFrame();
+    }
+    commit("CONSUME_PLAYING_CONTROL_SIGNAL");
+  } else if (State.playingControlSignal === "wantPause") {
+    audio.pause();
+    if (typeof PiP !== "undefined" && PiP.started && PiP.currentPiPStatus) {
+      PiP.suppressVideoEvents(320);
+      try { PiP.video.pause(); } catch (e) {}
+    }
+    commit("CONSUME_PLAYING_CONTROL_SIGNAL");
+  } else if (State.playingControlSignal === "wantSeek") {
+    if (isFinite(State.seekTo) && State.seekTo >= 0) { try { audio.currentTime = State.seekTo; } catch (e) {} }
+    commit("CONSUME_PLAYING_CONTROL_SIGNAL");
+  }
+}
+setInterval(pumpSignal, 60);
+
+audio.addEventListener("play", () => { commit("ON_PLAY"); });
+audio.addEventListener("pause", () => { commit("ON_PAUSE"); });
+audio.addEventListener("loadedmetadata", () => {
+  State.duration = audio.duration || 0;
+  const t = currentFile();
+  if (t && !t.duration) t.duration = State.duration;
+  renderProgress();
+});
+audio.addEventListener("timeupdate", () => {
+  State.currentTime = audio.currentTime;
+  syncLyric();
+  renderProgress();
+});
+audio.addEventListener("progress", renderProgress);
+audio.addEventListener("ended", () => {
+  if (State.loopMode === "one") { audio.currentTime = 0; audio.play().catch(() => {}); return; }
+  if (State.queueIndex < State.queue.length - 1) { commit("NEXT_TRACK"); attachQueued(); }
+  else if (State.loopMode === "all" && State.queue.length) { commit("SET_TRACK", 0); attachQueued(); }
+  else commit("ON_PAUSE");
+});
+audio.addEventListener("error", () => {
+  const t = currentFile();
+  if (t) logLine("加载失败: " + t.title, "er");
+});
+
+function attachQueued() {
+  const t = currentFile();
+  if (!t) return;
+  attachTrack(t, true);
+  renderAll();
+}
+
+/* ---------------------------- 字幕装载 ---------------------------- */
+function loadSubtitleFor(track) {
+  State.lrcLines = [];
+  State.currentLrcLineIndex = -1;
+  const list = track.availableLyrics || [];
+  if (!list.length) { State.selectedLyricIndex = -1; return; }
+  let idx = track.selectedLyricIndex;
+  if (idx == null || idx < 0 || idx >= list.length) idx = 0;
+  State.selectedLyricIndex = idx;
+  State.lrcLines = list[idx].cue || [];
+}
+
+function syncLyric() {
+  if (!State.lrcLines.length) return;
+  const t = State.currentTime - State.subtitleOffset;
+  let idx = -1;
+  for (let i = 0; i < State.lrcLines.length; i++) {
+    if (State.lrcLines[i].start <= t) idx = i; else break;
+  }
+  if (idx !== State.currentLrcLineIndex) {
+    State.currentLrcLineIndex = idx;
+    renderSubs();
+    renderBoard();
+    PiP.onLyricChange(currentCue() ? currentCue().text : "");
+    const el = document.querySelector(".cue.on");
+    if (el && State.subsOpen) el.scrollIntoView({ block: "center", behavior: "smooth" });
+    const bEl = document.querySelector(".brow.on");
+    if (bEl) bEl.scrollIntoView({ block: "center", behavior: "smooth" });
+    FloatSub.setText(currentCue() ? currentCue().text : "");
+  }
+}
+
+/* ============================ PiP 字幕 ============================ */
+/* 严格复刻 asmr.one chunk 18 的 PiPSubtitle 组件：
+   隐藏 canvas(2×视口宽, 20:3) → captureStream(0) → video → PiP
+   每次歌词变化重绘并 requestFrame()；优先 Document PiP，回退 Video PiP */
+const PiP = {
+  canvas: null, video: null, ctx: null,
+  pipWindow: null, documentPipWindow: null,
+  currentPiPStatus: false, isUsingDocumentPiP: false,
+  lastProcessedWindowSize: { height: 0, width: 0 },
+  resizePatchTimeoutID: null,
+  started: false,
+  currentText: "",
+  _suppress: false,          /* 我们自己操作 video 时，忽略随之而来的 play/pause 事件 */
+  _suppressTimer: null,
+  _lastPlayIntent: 0,
+  _hb: null,
+
+  /* PiP 激活期间持续推帧：0fps 流若长期无帧，浏览器会认为没内容，
+     PiP 里点播放时 play() 会一直挂起、play 事件不派发 */
+  startHeartbeat() {
+    this.stopHeartbeat();
+    this._hb = setInterval(() => {
+      if (!this.currentPiPStatus) return;
+      if (this.video && this.video.paused) return;
+      this.requestFrame();
+    }, 400);
+  },
+  stopHeartbeat() {
+    if (this._hb) { clearInterval(this._hb); this._hb = null; }
+  },
+
+  /* 主动操作 video（开启/关闭 PiP）时压制事件，避免误把音频也停掉 */
+  suppressVideoEvents(ms) {
+    this._suppress = true;
+    if (this._suppressTimer) clearTimeout(this._suppressTimer);
+    this._suppressTimer = setTimeout(() => { this._suppress = false; }, ms || 500);
+  },
+
+  get supportsDocumentPiP() {
+    return "documentPictureInPicture" in window && "requestWindow" in window.documentPictureInPicture;
+  },
+  /* 原站只查 pictureInPictureEnabled；这里额外覆盖 Safari（webkit 私有 API） */
+  get supportsWebkitPiP() {
+    try {
+      return !!(this.video && "webkitSupportsPresentationMode" in this.video &&
+        this.video.webkitSupportsPresentationMode("picture-in-picture"));
+    } catch (e) { return false; }
+  },
+  get supported() {
+    if (this.supportsDocumentPiP) return true;
+    if ("pictureInPictureEnabled" in document && document.pictureInPictureEnabled) return true;
+    return this.supportsWebkitPiP;
+  },
+
+  init() {
+    this.canvas = document.querySelector("#pipCanvas");
+    this.video = document.querySelector("#pipVideo");
+    this.ctx = this.canvas.getContext("2d");
+
+    /* video 的播放/暂停 → 驱动 audio。
+       这里直接操作 audio（而不是只发信号），失败会重试并显示原因，不再静默。 */
+    this.video.addEventListener("pause", () => {
+      if (this._suppress) return;
+      if (!audio.paused) { try { audio.pause(); } catch (e) {} }
+      commit("WANT_PAUSE");
+    }, true);
+
+    this.video.addEventListener("play", () => {
+      if (this._suppress) return;
+      this._lastPlayIntent = Date.now();
+      this.requestFrame();          /* 推一帧：0fps 流若没有数据，play() 会一直挂起 */
+      setTimeout(() => this.requestFrame(), 80);
+      this.recoverAudioPlayback(0);
+      commit("WANT_PLAY");
+    }, true);
+
+    this.video.addEventListener("playing", () => {
+      if (this._suppress) return;
+      this.requestFrame();
+      if (audio.paused) this.recoverAudioPlayback(0);
+    }, true);
+
+    /* 流被浏览器判结束（长暂停后偶发）→ 重建流，否则再点播放毫无反应 */
+    this.video.addEventListener("ended", () => {
+      if (this._suppress) return;
+      this.rebuildStream();
+    }, true);
+
+    /* 对账：不依赖事件是否派发，直接比较 video 与 audio 的真实状态。
+       这是 PiP 暂停后恢复的关键——事件可能压根不触发。 */
+    setInterval(() => {
+      if (!this.currentPiPStatus || this._suppress) return;
+      const vPlaying = !this.video.paused;
+      const aPlaying = !audio.paused;
+      if (vPlaying === aPlaying) return;
+      if (vPlaying) {
+        this.requestFrame();
+        this.recoverAudioPlayback(0);
+      } else {
+        try { audio.pause(); } catch (e) {}
+        commit("ON_PAUSE");
+      }
+    }, 500);
+
+    const w = 2 * window.innerWidth;
+    const h = (w / 20) * 3;
+    this.resizeCanvasAndRedraw(w, h, false);
+    this.drawSubtitle("");
+
+    try { this.video.srcObject = this.canvas.captureStream(0); } catch (e) {}
+
+    addEventListener("enterpictureinpicture", (ev) => {
+      if (this.isUsingDocumentPiP) return;
+      this.currentPiPStatus = true;
+      commit("SET_SUBTITLE_DISPLAY_MODE", "pip");
+      this.pipWindow = ev.pictureInPictureWindow;
+      this.pipWindow.onresize = this.onPipWindowResize.bind(this);
+      this.onPipWindowResize();
+      renderPipBtn();
+    }, false);
+
+    addEventListener("leavepictureinpicture", () => {
+      if (this.isUsingDocumentPiP) return;
+      this.currentPiPStatus = false;
+      this.stopHeartbeat();
+      commit("SET_SUBTITLE_DISPLAY_MODE", "in-app");
+      if (this.pipWindow) this.pipWindow.onresize = null;
+      renderPipBtn();
+    }, false);
+
+    this.started = true;
+  },
+
+  /* 画布尺寸 = 原站算法 */
+  resizeCanvasAndRedraw(w, h, redraw) {
+    this.canvas.width = Math.round(w);
+    this.canvas.height = Math.round(h);
+    this.drawSubtitle(this.currentText);
+    if (redraw) this.requestFrame();
+  },
+
+  requestFrame() {
+    try {
+      const s = this.video.srcObject;
+      if (s && s.getTracks) s.getTracks().forEach((t) => t.requestFrame && t.requestFrame());
+    } catch (e) {}
+  },
+
+  /* 绘制算法 1:1 照搬：白底黑字、字号 = 宽/20、≤18 字单行、否则拆两行 */
+  drawSubtitle(text) {
+    if (!this.ctx) return;
+    const t = (text || "").trim();
+    this.currentText = t;
+    const cv = this.canvas;
+    const g = this.ctx;
+    const s = cv.width / 20;
+    g.clearRect(0, 0, cv.width, cv.height);
+    g.fillStyle = "rgb(255, 255, 255)";
+    g.fillRect(0, 0, cv.width, cv.height);
+    g.font = `bold ${s}px "-apple-system", "BlinkMacSystemFont", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", "Helvetica", "Arial", "sans-serif"`;
+    g.fillStyle = "rgb(0, 0, 0)";
+    g.textBaseline = "alphabetic";
+    if (t.length <= 18) {
+      const w = g.measureText(t).width;
+      const x = (cv.width - w) / 2;
+      const y = (cv.height - s) / 2.2 + s;
+      g.fillText(t, x, y);
+    } else {
+      let w = g.measureText(t.slice(0, 19)).width;
+      let x = (cv.width - w) / 2;
+      let y = (cv.height - s) / 1.6;
+      g.fillText(t.slice(0, 19), x, y);
+      w = g.measureText(t.slice(19)).width;
+      x = (cv.width - w) / 2;
+      y += s + 0.15 * s;
+      g.fillText(t.slice(19), x, y);
+    }
+  },
+
+  onLyricChange(text) {
+    if (!this.started) return;
+    this.drawSubtitle(text);
+    if (!this.isUsingDocumentPiP) this.requestFrame();
+  },
+
+  onTrackChange() {
+    if (!this.started) return;
+    this.drawSubtitle("");
+    if (!this.isUsingDocumentPiP) this.requestFrame();
+  },
+
+  onPipWindowResize() {
+    if (!this.pipWindow) return;
+    if (Math.abs(this.lastProcessedWindowSize.height - this.pipWindow.height) < 10 &&
+        Math.abs(this.lastProcessedWindowSize.width - this.pipWindow.width) < 10) return;
+    this.lastProcessedWindowSize = { height: this.pipWindow.height, width: this.pipWindow.width };
+    const isSafari17 = /Version\/17.*Safari/.test(navigator.userAgent) || /Safari\/17/.test(navigator.userAgent);
+    if (isSafari17) {
+      this.resizeCanvasAndRedraw(0.5 * this.pipWindow.width, 0.5 * this.pipWindow.height, true);
+      if (this.resizePatchTimeoutID) clearTimeout(this.resizePatchTimeoutID);
+      this.resizePatchTimeoutID = setTimeout(() => {
+        this.resizeCanvasAndRedraw(2 * this.pipWindow.width, 2 * this.pipWindow.height, true);
+      }, 500);
+    } else {
+      this.resizeCanvasAndRedraw(2 * this.pipWindow.width, 2 * this.pipWindow.height, true);
+    }
+  },
+
+  onDocumentPipWindowResize() {
+    if (!this.documentPipWindow || this.documentPipWindow.closed) return;
+    this.resizeCanvasAndRedraw(2 * this.documentPipWindow.innerWidth, 2 * this.documentPipWindow.innerHeight, false);
+  },
+
+  /* 恢复 audio 播放：带重试，最终失败给出可见提示 */
+  recoverAudioPlayback(attempt) {
+    if (!audio.src) return;
+    let p;
+    try { p = audio.play(); } catch (e) { p = null; }
+    if (!p || !p.then) return;
+    p.then(() => {}).catch((e) => {
+      if (attempt < 3) {
+        setTimeout(() => this.recoverAudioPlayback(attempt + 1), 300 * (attempt + 1));
+        return;
+      }
+      logLine("画中画里恢复播放失败（" + (e && e.name ? e.name : e) + "）—— 请点一下页面上的播放按钮", "er");
+      commit("ON_PAUSE");
+    });
+  },
+
+  /* 长暂停后 canvas 流可能被判结束，重建一次，否则 PiP 再点播放毫无反应 */
+  rebuildStream() {
+    try {
+      this.video.srcObject = null;
+      const w = 2 * window.innerWidth;
+      this.resizeCanvasAndRedraw(w, (w / 20) * 3, false);
+      this.video.srcObject = this.canvas.captureStream(0);
+      this.drawSubtitle(this.currentText);
+      this.requestFrame();
+      if (this.currentPiPStatus && State.playing) {
+        this.suppressVideoEvents(400);
+        this.video.play().catch(() => {});
+      }
+    } catch (e) {}
+  },
+
+  async show() {
+    if (this.currentPiPStatus) return;
+    try {
+      if (this.supportsDocumentPiP) await this.showDocumentPiP();
+      else await this.showVideoPiP();
+    } catch (e) {
+      logLine("真画中画不可用，已切换到页内浮动字幕: " + (e && e.message ? e.message : e), "wr");
+      commit("SET_SUBTITLE_DISPLAY_MODE", "in-app");
+      FloatSub.show();
+    }
+  },
+
+  async showDocumentPiP() {
+    try {
+      this.documentPipWindow = await window.documentPictureInPicture.requestWindow({ width: 480, height: 120 });
+      this.documentPipWindow.document.body.style.cssText = "margin:0;background:#fff;overflow:hidden";
+      this.documentPipWindow.document.body.append(this.canvas);
+      this.canvas.style.cssText = "width:100%;height:100%;object-fit:contain;display:block";
+      this.documentPipWindow.addEventListener("resize", () => this.onDocumentPipWindowResize());
+      this.onDocumentPipWindowResize();
+      this.documentPipWindow.addEventListener("pagehide", () => {
+        this.currentPiPStatus = false;
+        this.isUsingDocumentPiP = false;
+        this.stopHeartbeat();
+        const host = document.querySelector("#pip-subtitle-container");
+        if (host && this.canvas) host.appendChild(this.canvas);
+        this.canvas.style.cssText = "display:none";
+        this.resizeCanvasAndRedraw(2 * window.innerWidth, (2 * window.innerWidth / 20) * 3, false);
+        commit("SET_SUBTITLE_DISPLAY_MODE", "in-app");
+        renderPipBtn();
+      });
+      this.currentPiPStatus = true;
+      this.isUsingDocumentPiP = true;
+      commit("SET_SUBTITLE_DISPLAY_MODE", "pip");
+      this.drawSubtitle(this.currentText);
+      this.startHeartbeat();
+      renderPipBtn();
+    } catch (e) {
+      await this.showVideoPiP();
+    }
+  },
+
+  async showVideoPiP() {
+    /* 打开 PiP 时先压制事件：这里的 play() 只是为了把 video 推进 PiP，
+       不应把用户"暂停中"的音频顺带播起来 */
+    this.suppressVideoEvents(900);
+    this.video.play().catch(() => {});
+    this.requestFrame();
+    this.startHeartbeat();
+    if (typeof this.video.requestPictureInPicture === "function") {
+      await this.video.requestPictureInPicture();
+    } else if ("webkitSetPresentationMode" in this.video && typeof this.video.webkitSetPresentationMode === "function") {
+      this.video.webkitSetPresentationMode("picture-in-picture");
+      this.currentPiPStatus = true;
+      this.isUsingDocumentPiP = false;
+      commit("SET_SUBTITLE_DISPLAY_MODE", "pip");
+      renderPipBtn();
+    } else {
+      throw new Error("此浏览器不支持画中画");
+    }
+  },
+
+  hide() {
+    if (FloatSub.on) { FloatSub.hide(); return; }
+    if (!this.currentPiPStatus) return;
+    this.stopHeartbeat();
+    /* 关闭 PiP 时压制事件，否则 video.pause() 会把正在播的音频一起停掉 */
+    this.suppressVideoEvents(900);
+    if (this.isUsingDocumentPiP && this.documentPipWindow && !this.documentPipWindow.closed) {
+      this.documentPipWindow.close();
+    } else {
+      this.video.pause();
+      if (typeof document.exitPictureInPicture === "function") document.exitPictureInPicture().catch(() => {});
+      else if ("webkitSetPresentationMode" in this.video) this.video.webkitSetPresentationMode("inline");
+      this.currentPiPStatus = false;
+      commit("SET_SUBTITLE_DISPLAY_MODE", "in-app");
+      renderPipBtn();
+    }
+  },
+
+  toggle() {
+    if (this.currentPiPStatus) this.hide(); else this.show();
+  }
+};
+
+/* ------------------------ 页内浮动字幕（降级方案） ------------------------ */
+const FloatSub = {
+  on: false,
+  el: null, textEl: null,
+  init() {
+    this.el = $("#floatSub");
+    this.textEl = $("#floatSubText");
+    $("#floatSubClose").onclick = () => this.hide();
+  },
+  show(text) {
+    this.on = true;
+    this.el.classList.add("show");
+    this.setText(text != null ? text : (currentCue() ? currentCue().text : ""));
+    renderPipBtn();
+  },
+  hide() {
+    this.on = false;
+    this.el.classList.remove("show");
+    renderPipBtn();
+  },
+  setText(t) {
+    if (!this.on) return;
+    this.textEl.textContent = t || "";
+    this.el.style.display = t ? "block" : "none";
+  },
+};
+
+/* ---------------------------- MediaSession ---------------------------- */
+function updateMediaSession(track) {
+  if (!("mediaSession" in navigator)) return;
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title || "未知曲目",
+      artist: track.workId || "ASMR",
+      album: track.path || "",
+    });
+    navigator.mediaSession.setActionHandler("play", () => commit("WANT_PLAY"));
+    navigator.mediaSession.setActionHandler("pause", () => commit("WANT_PAUSE"));
+    navigator.mediaSession.setActionHandler("previoustrack", () => { commit("PREVIOUS_TRACK"); attachQueued(); });
+    navigator.mediaSession.setActionHandler("nexttrack", () => { commit("NEXT_TRACK"); attachQueued(); });
+  } catch (e) {}
+}
+
+/* ------------------------------ 库/树 ------------------------------ */
+const lib = { roots: [], tracks: [], byPath: new Map() };
+let dbTrackCount = 0;   /* 库里遗留的曲目索引条数（音频不落库，仅用于提示） */
+
+function buildTree(entries) {
+  const root = { name: "", type: "folder", children: [], path: "" };
+  const dirMap = new Map([["", root]]);
+  const ensureDir = (path) => {
+    if (dirMap.has(path)) return dirMap.get(path);
+    const parts = path.split("/");
+    const name = parts.pop();
+    const parent = ensureDir(parts.join("/"));
+    const node = { name, type: "folder", children: [], path };
+    parent.children.push(node);
+    dirMap.set(path, node);
+    return node;
+  };
+  for (const e of entries) {
+    const parts = e.path.split("/");
+    const fileName = parts.pop();
+    const dir = ensureDir(parts.join("/"));
+    dir.children.push({ name: fileName, path: e.path, type: e.type || "other" });
+  }
+  const sortRec = (n) => {
+    n.children.sort((a, b) => {
+      if ((a.type === "folder") !== (b.type === "folder")) return a.type === "folder" ? -1 : 1;
+      return a.name.localeCompare(b.name, "ja", { numeric: true });
+    });
+    n.children.forEach((c) => c.type === "folder" && sortRec(c));
+  };
+  sortRec(root);
+  return root;
+}
+
+let selectedDirPath = "", currentFolderList = [];
+
+function findNode(nodes, path) {
+  for (const n of nodes) {
+    if (n.path === path) return n;
+    if (n.children) { const hit = findNode(n.children, path); if (hit) return hit; }
+  }
+  return null;
+}
+function collectAudios(node) {
+  const out = [];
+  const walk = (n) => {
+    for (const c of n.children || []) {
+      if (c.type === "audio") { const real = lib.byPath.get(c.path); if (real) out.push(real); }
+      else if (c.type === "folder") walk(c);
+    }
+  };
+  walk(node);
+  return out;
+}
+function countAudios(node) {
+  let n = 0;
+  for (const c of node.children || []) {
+    if (c.type === "audio") n++;
+    else if (c.type === "folder") n += countAudios(c);
+  }
+  return n;
+}
+function selectDir(path) {
+  selectedDirPath = path;
+  const node = findNode(lib.roots, path);
+  currentFolderList = node ? collectAudios(node) : [];
+  renderTree(); renderList();
+}
+
+/* 简化目录树：只去掉压缩包自带的"包装层"（如 _outer/、包名目录/），
+   让资源库直接显示作品层。不做自底向上合并，避免子目录名盖掉作品号。
+   保留每个节点的真实 path，删除时仍按完整路径前缀匹配。 */
+function simplifyTree(root) {
+  let guard = 0;
+  while (
+    root.children && root.children.length === 1 &&
+    root.children[0].type === "folder" &&
+    (root.children[0].children || []).some((c) => c.type === "folder") &&
+    guard++ < 8
+  ) {
+    root.children = root.children[0].children;
+  }
+  return root;
+}
+
+/* 把资源库的实际层级写进日志，便于核对压缩包结构 */
+function logStructure() {
+  const root = lib.roots[0];
+  if (!root) return;
+  let shown = 0;
+  const dump = (node, depth) => {
+    for (const c of node.children || []) {
+      if (c.type !== "folder") continue;
+      if (shown++ < 24) {
+        const cnt = (function count(n) {
+          let k = 0;
+          for (const x of n.children || []) {
+            if (x.type === "audio") k++;
+            else if (x.type === "folder") k += count(x);
+          }
+          return k;
+        })(c);
+        logLine("  ".repeat(depth) + "📁 " + c.name + "  (" + cnt + " 首)  " + c.path, "dm");
+      }
+      dump(c, depth + 1);
+    }
+  };
+  logLine("资源库结构:", "dm");
+  dump(root, 0);
+}
+
+/* 计算一组路径的公共目录前缀，用于剥掉压缩包自带的包装层。
+   约束：至少给每层目录保留一级，否则文件会失去目录结构、资源库变空。 */
+function commonDirPrefix(paths) {
+  if (!paths.length) return "";
+  const dirs = paths.map((p) => p.split("/").slice(0, -1));
+  const minDepth = Math.min(...dirs.map((d) => d.length));
+  if (minDepth <= 1) return "";
+  const first = dirs[0];
+  let common = 0;
+  for (let i = 0; i < first.length; i++) {
+    if (dirs.every((d) => d[i] === first[i])) common = i + 1; else break;
+  }
+  common = Math.min(common, minDepth - 1);   /* 至少留一层目录 */
+  if (common <= 0) return "";
+  return first.slice(0, common).join("/") + "/";
+}
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function renderTree() {
+  const host = $("#tree");
+  const asideEl = host.closest("aside");
+  const root = lib.roots[0];
+  const folders = root ? (root.children || []).filter((c) => c.type === "folder") : [];
+
+  if (!lib.tracks.length) {
+    if (asideEl) asideEl.classList.add("is-empty");
+    host.innerHTML = '<div class="empty" id="treeEmpty">还没有任何内容<br>点右上角 <b>导入压缩包</b><br><span style="font-size:11px">支持 zip（含嵌套 zip）</span></div>';
+    return;
+  }
+  if (!folders.length) {
+    /* 曲目直接位于压缩包根目录，没有子文件夹可列 */
+    if (asideEl) asideEl.classList.add("is-empty");
+    host.innerHTML = '<div class="empty" style="padding:12px 8px;font-size:12px;line-height:1.7">曲目都在根目录<br><span style="font-size:11px">右侧直接查看</span></div>';
+    return;
+  }
+  if (asideEl) asideEl.classList.remove("is-empty");
+
+  let html = "";
+  const walk = (node, depth) => {
+    for (const c of node.children || []) {
+      if (c.type !== "folder") continue;
+      const cls = depth === 0 ? "child" : "grandchild";
+      html += '<div class="node ' + cls + (selectedDirPath === c.path ? " sel" : "") + '" data-path="' + esc(c.path) + '">'
+        + '<span class="ico">📁</span><span class="nm" title="' + esc(c.path) + '">' + esc(c.name) + "</span>"
+        + '<span class="cnt">' + countAudios(c) + "</span>"
+        + '<button class="node-del" data-delpath="' + esc(c.path) + '" title="删除这个文件夹">✕</button>'
+        + "</div>";
+      walk(c, depth + 1);
+    }
+  };
+  walk(root, 0);
+  host.innerHTML = html;
+
+  host.querySelectorAll(".node").forEach((el) => {
+    el.onclick = (ev) => {
+      if (ev.target.closest(".node-del")) return;
+      selectDir(el.dataset.path);
+    };
+  });
+  host.querySelectorAll(".node-del").forEach((btn) => {
+    btn.onclick = async (ev) => {
+      ev.stopPropagation();
+      await removeFolderFromLibrary(btn.dataset.delpath);
+    };
+  });
+}
+
+/* 默认选中：第一个文件夹（原「全部曲目」节点的作用由它接替） */
+function firstFolderPath(root) {
+  const f = root && (root.children || []).find((c) => c.type === "folder");
+  return f ? f.path : "";
+}
+
+/* 从资源库删除整个文件夹（含其下所有曲目） */
+async function removeFolderFromLibrary(path) {
+  if (!path) return;
+  const prefix = path + "/";
+  const targets = lib.tracks.filter((t) => t.path.startsWith(prefix));
+  if (!targets.length) {
+    logLine("这个文件夹里没有曲目", "wr");
+    return;
+  }
+  const msg = "从资源库删除文件夹「" + path.split("/").pop() + "」？\n\n"
+    + "· 包含 " + targets.length + " 首曲目\n"
+    + "· 只从当前会话的列表移除，不影响库里其他压缩包的字幕\n"
+    + "· 重新导入对应压缩包即可恢复";
+  if (!confirm(msg)) return;
+
+  const gone = new Set(targets.map((t) => t.path));
+
+  /* 1. 内存库 */
+  lib.tracks = lib.tracks.filter((t) => !gone.has(t.path));
+  for (const p of gone) lib.byPath.delete(p);
+
+  /* 2. 正在播的曲目被删 → 停止 */
+  const cur = currentFile();
+  if (cur && gone.has(cur.path)) {
+    try { audio.pause(); } catch (e) {}
+    audio.removeAttribute("src");
+    try { audio.load(); } catch (e) {}
+    State.lrcLines = [];
+    State.currentLrcLineIndex = -1;
+    State.currentTime = 0;
+    State.duration = 0;
+    commit("EMPTY_QUEUE");
+    PiP.onTrackChange();
+    FloatSub.setText("");
+  } else if (State.queue.length) {
+    /* 3. 队列里也同步移除 */
+    const before = State.queue.length;
+    const curPath = cur ? cur.path : null;
+    State.queue = State.queue.filter((t) => !gone.has(t.path));
+    if (State.queue.length !== before) {
+      const ni = curPath ? State.queue.findIndex((t) => t.path === curPath) : -1;
+      State.queueIndex = ni >= 0 ? ni : clamp(State.queueIndex, 0, Math.max(0, State.queue.length - 1));
+    }
+  }
+
+  /* 4. 库里的曲目索引与音频本体同步删（字幕记录保留，它属于压缩包） */
+  const rows = await dbGetAll("track");
+  for (const row of rows) if (gone.has(row.path)) await dbDelete("track", row.id);
+  for (const p of gone) { try { await dbDelete("audio", p); } catch (e) {} }
+  dbTrackCount = (await dbGetAll("track")).length;
+
+  /* 5. 重建树；选中目录若被删则落到第一个文件夹 */
+  const selWasRemoved = selectedDirPath === path || selectedDirPath.startsWith(prefix);
+  lib.roots = [buildTree(lib.tracks.map((t) => ({ path: t.path, type: "audio" })))];
+  simplifyTree(lib.roots[0]);
+  if (selWasRemoved || !selectedDirPath) selectedDirPath = firstFolderPath(lib.roots[0]);
+  selectDir(selectedDirPath);
+  renderAll();
+  logLine("已从资源库删除文件夹: " + path + "（" + targets.length + " 首）", "wr");
+}
+
+function renderList() {
+  const host = $("#list");
+  $("#listTitle").textContent = selectedDirPath === "" ? "播放列表" : (selectedDirPath.split("/").pop() || "播放列表");
+  $("#listMeta").textContent = currentFolderList.length ? currentFolderList.length + " 首" : "";
+  if (!currentFolderList.length) {
+    /* 库里有索引但没有音频对象：说明只导过字幕/或刷新过页面，需要重新导入压缩包重建音频 */
+    const hint = dbTrackCount > 0
+      ? '库里存着 ' + dbTrackCount + ' 条曲目索引，但音频数据不落库（体积太大）<br>'
+        + '<span style="font-size:11px">重新导入同一个压缩包即可恢复播放，不会重复写入字幕</span>'
+      : '这里没有音频文件';
+    host.innerHTML = '<div class="empty">' + hint + "</div>";
+    return;
+  }
+  const cur = currentFile();
+  let html = "";
+  currentFolderList.forEach((t, i) => {
+    const playing = cur && cur.path === t.path;
+    const subs = (t.availableLyrics || []).length;
+    const conf = subs ? Math.round((t.availableLyrics[0].confidence || 0) * 100) : 0;
+    html += '<div class="track ' + (playing ? "playing" : "") + '" data-i="' + i + '">'
+      + '<span class="idx">' + (playing ? '<span class="eq"><i></i><i></i><i></i></span>' : (i + 1)) + "</span>"
+      + '<span class="nm" title="' + esc(t.path) + '">' + esc(t.title) + "</span>"
+      + (subs ? '<span class="badge' + (conf < 50 ? " low" : "") + '">字幕 ' + conf + "%</span>" : "")
+      + '<span class="dur">' + (t.duration ? fmtTime(t.duration) : "--:--") + "</span>"
+      + "</div>";
+  });
+  host.innerHTML = html;
+  host.querySelectorAll(".track").forEach((el) => {
+    el.onclick = () => {
+      const i = +el.dataset.i;
+      const target = currentFolderList[i];
+      if (currentFile() && currentFile().path === target.path) { commit("TOGGLE_WANT_PLAYING"); return; }
+      commit("SET_QUEUE", { queue: currentFolderList.slice(), index: i, resetPlaying: true });
+      attachQueued();
+    };
+  });
+}
+
+function renderProgress() {
+  const d = State.duration || audio.duration || 0;
+  const c = State.currentTime || 0;
+  const pct = d > 0 ? clamp((c / d) * 100, 0, 100) : 0;
+  $("#seekFill").style.width = pct + "%";
+  $("#seekKnob").style.left = pct + "%";
+  $("#tCur").textContent = fmtTime(c);
+  $("#tDur").textContent = fmtTime(d);
+  if (audio.buffered && audio.buffered.length && d > 0) {
+    const end = audio.buffered.end(audio.buffered.length - 1);
+    $("#seekBuf").style.width = clamp((end / d) * 100, 0, 100) + "%";
+  }
+  $("#btnPlay").textContent = audio.paused ? "▶" : "⏸";
+  /* 字幕全览里的进度 */
+  if ($("#ovBoard").classList.contains("show")) {
+    $("#boardCur").textContent = fmtTimeMs(c);
+    $("#boardDur").textContent = fmtTimeMs(d);
+    $("#boardFill").style.width = pct + "%";
+  }
+}
+
+function renderNowPlaying() {
+  const t = currentFile();
+  $("#npTitle").textContent = t ? t.title : "未在播放";
+  $("#npSub").textContent = t ? (t.workId ? t.workId + " · " : "") + (t.path || "") : "—";
+  const qc = $("#queueCount");
+  if (qc) qc.textContent = State.queue.length;
+}
+
+function renderPipBtn() {
+  const b = $("#btnPip");
+  const on = State.subtitleDisplayMode === "pip" || FloatSub.on;
+  b.classList.toggle("on", on);
+  b.title = on ? "关闭画中画字幕" : "画中画显示字幕";
+}
+
+let subsRenderedFor = "";
+function renderSubs() {
+  const t = currentFile();
+  const box = $("#subsBody");
+  const confEl = $("#subsConf");
+  const nameEl = $("#subsName");
+  if (!t || !(t.availableLyrics || []).length) {
+    box.innerHTML = '<div class="subs-empty">当前曲目没有匹配到字幕</div>';
+    confEl.textContent = ""; nameEl.textContent = "";
+    return;
+  }
+  const list = t.availableLyrics;
+  const sel = list[State.selectedLyricIndex] || list[0];
+  nameEl.textContent = sel.title.length > 26 ? sel.title.slice(0, 26) + "…" : sel.title;
+  nameEl.title = sel.title;
+  confEl.textContent = "相似度 " + (sel.confidence * 100).toFixed(1) + "%";
+  if (!State.lrcLines.length) {
+    box.innerHTML = '<div class="subs-empty">这条字幕解析后没有可用时间轴</div>';
+    return;
+  }
+  const key = (sel.title || "") + "|" + State.lrcLines.length;
+  if (subsRenderedFor === key && box.dataset.offset === String(State.subtitleOffset)) {
+    box.querySelectorAll(".cue").forEach((el, i) => el.classList.toggle("on", i === State.currentLrcLineIndex));
+    return;
+  }
+  subsRenderedFor = key;
+  box.dataset.offset = String(State.subtitleOffset);
+
+  let html = "";
+  if (list.length > 1) {
+    html += '<div class="row" style="padding:8px 16px 10px"><select id="subSelect" style="flex:1">';
+    list.forEach((l, i) => {
+      html += '<option value="' + i + '"' + (i === State.selectedLyricIndex ? " selected" : "") + ">"
+        + esc(l.title) + " · " + (l.confidence * 100).toFixed(0) + "%</option>";
+    });
+    html += "</select></div>";
+  }
+  html += '<div class="row" style="padding:2px 16px 10px;font-size:11.5px;color:var(--dim)">'
+    + '<span>偏移</span>'
+    + '<button class="btn" style="padding:3px 9px;font-size:11.5px" data-off="-0.1">−0.1s</button>'
+    + '<span id="offVal" style="min-width:50px;text-align:center;font-variant-numeric:tabular-nums;font-weight:600;color:var(--txt)">' + State.subtitleOffset.toFixed(1) + "s</span>"
+    + '<button class="btn" style="padding:3px 9px;font-size:11.5px" data-off="0.1">+0.1s</button>'
+    + '<button class="btn" style="padding:3px 9px;font-size:11.5px" data-off="reset">重置</button>'
+    + "</div>";
+  State.lrcLines.forEach((c, i) => {
+    html += '<div class="cue' + (i === State.currentLrcLineIndex ? " on" : "") + '" data-i="' + i + '">'
+      + '<span class="t">' + fmtTimeMs(c.start) + "</span>" + esc(c.text) + "</div>";
+  });
+  box.innerHTML = html;
+
+  const selEl = box.querySelector("#subSelect");
+  if (selEl) {
+    selEl.onchange = () => {
+      const i = +selEl.value;
+      t.selectedLyricIndex = i;
+      State.selectedLyricIndex = i;
+      State.lrcLines = t.availableLyrics[i].cue || [];
+      State.currentLrcLineIndex = -1;
+      subsRenderedFor = "";
+      PiP.onLyricChange("");
+      renderSubs(); renderBoard();
+    };
+  }
+  box.querySelectorAll("[data-off]").forEach((b) => {
+    b.onclick = () => {
+      const v = b.dataset.off;
+      if (v === "reset") State.subtitleOffset = 0;
+      else State.subtitleOffset = Math.round((State.subtitleOffset + parseFloat(v)) * 10) / 10;
+      subsRenderedFor = "";
+      syncLyric(); renderSubs(); renderBoard();
+    };
+  });
+  box.querySelectorAll(".cue").forEach((el) => {
+    el.onclick = () => {
+      const cue = State.lrcLines[+el.dataset.i];
+      if (cue) commit("WANT_SEEK", cue.start + State.subtitleOffset);
+    };
+  });
+}
+
+/* ------------------------ 字幕全览（全部字幕 + 位置） ------------------------ */
+let boardKey = "";
+function renderBoard(force) {
+  const t = currentFile();
+  const body = $("#boardBody");
+  if (!t || !State.lrcLines.length) {
+    body.innerHTML = '<div class="subs-empty">当前没有可用字幕</div>';
+    $("#boardMeta").textContent = "";
+    return;
+  }
+  const sel = (t.availableLyrics || [])[State.selectedLyricIndex] || {};
+  $("#boardMeta").textContent = (sel.title ? sel.title + " · " : "") + State.lrcLines.length + " 行";
+  $("#boardOffset").textContent = "偏移 " + State.subtitleOffset.toFixed(1) + "s";
+  const key = (sel.title || "") + "|" + State.lrcLines.length + "|" + State.subtitleOffset;
+  if (!force && boardKey === key) {
+    body.querySelectorAll(".brow").forEach((el, i) => el.classList.toggle("on", i === State.currentLrcLineIndex));
+    renderProgress();
+    return;
+  }
+  boardKey = key;
+  let html = "";
+  State.lrcLines.forEach((c, i) => {
+    html += '<div class="brow' + (i === State.currentLrcLineIndex ? " on" : "") + '" data-i="' + i + '">'
+      + '<span class="bt">' + fmtTimeMs(c.start) + "</span>"
+      + '<span class="bx">' + esc(c.text) + "</span></div>";
+  });
+  body.innerHTML = html;
+  body.querySelectorAll(".brow").forEach((el) => {
+    el.onclick = () => {
+      const cue = State.lrcLines[+el.dataset.i];
+      if (cue) commit("WANT_SEEK", cue.start + State.subtitleOffset);
+    };
+  });
+  const on = body.querySelector(".brow.on");
+  if (on) on.scrollIntoView({ block: "center" });
+  renderProgress();
+}
+
+function renderQueue() {
+  const host = $("#queueBody");
+  if (!State.queue.length) { host.innerHTML = '<div class="subs-empty">队列为空</div>'; return; }
+  let html = "";
+  State.queue.forEach((t, i) => {
+    html += '<div class="qrow ' + (i === State.queueIndex ? "cur" : "") + '" data-i="' + i + '">'
+      + '<span style="width:22px;text-align:right;color:var(--dim);font-size:12px">' + (i + 1) + "</span>"
+      + '<span class="qn" title="' + esc(t.path) + '">' + esc(t.title) + "</span>"
+      + '<button class="qx" data-del="' + i + '">✕</button></div>';
+  });
+  host.innerHTML = html;
+  host.querySelectorAll(".qrow").forEach((el) => {
+    el.onclick = (ev) => {
+      if (ev.target.dataset.del != null) {
+        const i = +ev.target.dataset.del;
+        const isCur = i === State.queueIndex;
+        commit("REMOVE_FROM_QUEUE", i);
+        if (isCur) attachQueued();
+        renderQueue();
+        return;
+      }
+      commit("SET_TRACK", +el.dataset.i);
+      attachQueued();
+      renderQueue();
+    };
+  });
+}
+
+function renderAll() {
+  renderNowPlaying();
+  renderProgress();
+  renderList();
+  renderSubs();
+  renderPipBtn();
+  $("#btnLoop").textContent = State.loopMode === "one" ? "🔂" : "↻";
+  $("#btnLoop").classList.toggle("active", State.loopMode !== "off");
+  $("#speed").value = String(State.playbackRate);
+}
+
+/* ------------------------------ 事件 ------------------------------ */
+$("#btnPlay").onclick = () => {
+  if (!currentFile()) { logLine("先选一首歌", "wr"); return; }
+  commit("TOGGLE_WANT_PLAYING");
+};
+$("#btnPrev").onclick = () => {
+  if (audio.currentTime > 3) { commit("WANT_SEEK", 0); return; }
+  commit("PREVIOUS_TRACK"); attachQueued();
+};
+$("#btnNext").onclick = () => { commit("NEXT_TRACK"); attachQueued(); };
+$("#btnLoop").onclick = () => {
+  State.loopMode = State.loopMode === "off" ? "all" : State.loopMode === "all" ? "one" : "off";
+  renderAll();
+};
+$("#vol").oninput = (e) => {
+  State.volume = parseFloat(e.target.value);
+  State.muted = State.volume === 0;
+  audio.volume = State.volume;
+  $("#btnVol").textContent = State.muted ? "🔇" : "🔊";
+};
+$("#btnVol").onclick = () => {
+  State.muted = !State.muted;
+  audio.volume = State.muted ? 0 : State.volume;
+  $("#btnVol").textContent = State.muted ? "🔇" : "🔊";
+};
+$("#speed").onchange = (e) => {
+  const v = parseFloat(e.target.value);
+  audio.playbackRate = v;
+  commit("SET_PLAYBACK_RATE", v);
+};
+
+/* 进度条：pointer 事件，鼠标与触屏通用 */
+(function bindSeek() {
+  const bar = $("#seekBar");
+  let dragging = false;
+  const seekAt = (ev) => {
+    const r = bar.getBoundingClientRect();
+    const p = clamp((ev.clientX - r.left) / r.width, 0, 1);
+    const d = State.duration || audio.duration || 0;
+    if (d) commit("WANT_SEEK", p * d);
+  };
+  bar.addEventListener("pointerdown", (ev) => { dragging = true; try { bar.setPointerCapture(ev.pointerId); } catch (e) {} seekAt(ev); });
+  bar.addEventListener("pointermove", (ev) => { if (dragging) seekAt(ev); });
+  bar.addEventListener("pointerup", () => { dragging = false; });
+  bar.addEventListener("pointercancel", () => { dragging = false; });
+})();
+
+/* 字幕条展开/收起 */
+$("#subsToggle").onclick = () => {
+  State.subsOpen = !State.subsOpen;
+  $("#subs").classList.toggle("collapsed", !State.subsOpen);
+  if (State.subsOpen) renderSubs();
+};
+
+/* 画中画按钮 */
+$("#btnPip").onclick = () => {
+  if (!PiP.started) PiP.init();
+  if (FloatSub.on) { FloatSub.hide(); return; }
+  if (PiP.currentPiPStatus) { PiP.hide(); return; }
+  if (!PiP.supported) {
+    /* 浏览器没有 PiP 能力：直接给页内浮动字幕，保证能看字幕 */
+    FloatSub.show();
+    return;
+  }
+  PiP.show();
+};
+
+/* 全部字幕按钮 */
+$("#btnBoard").onclick = () => {
+  renderBoard(true);
+  openOv("ovBoard");
+  requestAnimationFrame(() => {
+    const on = document.querySelector(".brow.on");
+    if (on) on.scrollIntoView({ block: "center" });
+  });
+};
+
+/* 弹窗 */
+function openOv(id) { $("#" + id).classList.add("show"); }
+function closeOv(id) { $("#" + id).classList.remove("show"); }
+$$("[data-close]").forEach((b) => { b.onclick = () => closeOv(b.dataset.close); });
+$$(".overlay").forEach((o) => { o.addEventListener("mousedown", (e) => { if (e.target === o) o.classList.remove("show"); }); });
+/* 元素可能被裁掉（例如顶部按钮已移除），统一做存在性判断，避免一处 null 让整个脚本中断 */
+const bindClick = (sel, fn) => { const el = $(sel); if (el) el.onclick = fn; return el; };
+
+bindClick("#btnImport", async () => { await renderPkgList(); openOv("ovImport"); });
+bindClick("#btnPkgs", async () => { await renderPkgList(); openOv("ovPkgs"); });
+bindClick("#btnManagePkgs", async () => { await renderPkgList(); closeOv("ovImport"); openOv("ovPkgs"); });
+bindClick("#btnQueue", () => { renderQueue(); openOv("ovQueue"); });
+bindClick("#btnAbout", () => openOv("ovAbout"));
+
+/* 键盘 */
+window.addEventListener("keydown", (e) => {
+  if (/input|select|textarea/i.test((e.target.tagName || ""))) return;
+  if (e.code === "Space") { e.preventDefault(); commit("TOGGLE_WANT_PLAYING"); }
+  if (e.code === "ArrowRight") commit("WANT_SEEK", Math.min(State.duration || 0, State.currentTime + 5));
+  if (e.code === "ArrowLeft") commit("WANT_SEEK", Math.max(0, State.currentTime - 5));
+  if (e.code === "ArrowUp") { commit("PREVIOUS_TRACK"); attachQueued(); }
+  if (e.code === "ArrowDown") { commit("NEXT_TRACK"); attachQueued(); }
+});
+
+/* ------------------------ 已导入压缩包管理 ------------------------ */
+function fmtSize(bytes) {
+  if (!bytes) return "0 B";
+  const u = ["B", "KB", "MB", "GB"];
+  let i = 0, v = bytes;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return v.toFixed(v >= 100 || i === 0 ? 0 : 1) + " " + u[i];
+}
+
+/* 存储用量：申请持久化 + 显示已用/可用 */
+async function updateStorageInfo() {
+  const el = $("#storageInfo");
+  if (!el) return;
+  let saved = 0, count = 0;
+  try {
+    const rows = await dbGetAll("audio");
+    count = rows.length;
+    saved = rows.reduce((a, r) => a + (r.size || (r.blob ? r.blob.size : 0)), 0);
+  } catch (e) {}
+  let quotaText = "";
+  try {
+    if (navigator.storage && navigator.storage.estimate) {
+      const est = await navigator.storage.estimate();
+      if (est && est.quota) {
+        quotaText = " · 浏览器可用 " + fmtSize(Math.max(0, est.quota - (est.usage || 0)));
+      }
+    }
+  } catch (e) {}
+  el.innerHTML = "音频已存 <b>" + count + "</b> 首，共 <b>" + fmtSize(saved) + "</b>"
+    + quotaText
+    + '<br><span style="font-size:11px">用浏览器存储保存，清空浏览器数据会一并清除</span>';
+}
+
+async function requestPersistentStorage() {
+  try {
+    if (navigator.storage && navigator.storage.persist && !(await navigator.storage.persisted())) {
+      await navigator.storage.persist();
+    }
+  } catch (e) {}
+}
+function fmtDate(d) {
+  try {
+    const t = new Date(d);
+    if (isNaN(t.getTime())) return "";
+    const p = (n) => String(n).padStart(2, "0");
+    return t.getFullYear() + "-" + p(t.getMonth() + 1) + "-" + p(t.getDate()) + " " + p(t.getHours()) + ":" + p(t.getMinutes());
+  } catch (e) { return ""; }
+}
+
+async function renderPkgList() {
+  const host = $("#pkgList");
+  if (!host) return;
+  const pkgs = await dbGetAll("subtitle_package");
+  const records = await dbGetAll("subtitle_record");
+
+  const badge = $("#pkgBadge");
+  if (badge) badge.textContent = pkgs.length;
+  const linkCount = $("#pkgLinkCount");
+  if (linkCount) linkCount.textContent = pkgs.length;
+  const headCount = $("#pkgCount");
+  if (headCount) headCount.textContent = pkgs.length ? "共 " + pkgs.length + " 个" : "";
+
+  if (!pkgs.length) {
+    host.innerHTML = '<div class="pkg-empty">还没有导入过压缩包</div>';
+    return;
+  }
+  const sorted = pkgs.slice().sort((a, b) => {
+    const ta = a.created_at ? +new Date(a.created_at) : 0;
+    const tb = b.created_at ? +new Date(b.created_at) : 0;
+    return tb - ta;
+  });
+  let html = "";
+  for (const p of sorted) {
+    const rs = records.filter((r) => r.subtitle_package_id === p.id);
+    const subCount = rs.length;
+    const trackCount = new Set(rs.map((r) => r.track_path).filter(Boolean)).size;
+    html += '<div class="pkg-item" data-id="' + p.id + '">'
+      + '<span class="pkg-icon">📦</span>'
+      + '<div class="pkg-main">'
+      + '<div class="pkg-name" title="' + esc(p.file_name || "") + '">' + esc(p.file_name || "(未命名)") + "</div>"
+      + '<div class="pkg-meta">' + fmtSize(p.size) + " · 字幕 " + subCount + " 条 · 关联曲目 " + trackCount + " 首"
+      + (p.created_at ? " · " + fmtDate(p.created_at) : "") + "</div>"
+      + "</div>"
+      + '<button class="pkg-del" data-del="' + p.id + '" title="删除这个压缩包">✕</button>'
+      + "</div>";
+  }
+  host.innerHTML = html;
+  host.querySelectorAll("[data-del]").forEach((btn) => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      await deleteSubtitlePackage(+btn.dataset.del);
+    };
+  });
+}
+
+async function deleteSubtitlePackage(pkgId) {
+  const pkgs = await dbGetAll("subtitle_package");
+  const pkg = pkgs.find((p) => p.id === pkgId);
+  if (!pkg) return;
+  const records = (await dbGetAll("subtitle_record")).filter((r) => r.subtitle_package_id === pkgId);
+
+  const msg = "删除压缩包「" + (pkg.file_name || "") + "」？\n\n"
+    + "· 会移除它的 " + records.length + " 条字幕记录\n"
+    + "· 音频文件本来就不在库里，不受影响\n"
+    + "· 删除后该包的字幕无法恢复，需要重新导入";
+  if (!confirm(msg)) return;
+
+  /* 1. 字幕记录 */
+  for (const r of records) await dbDelete("subtitle_record", r.id);
+
+  /* 2. 不再被任何记录引用的字幕内容 */
+  const remainRecords = await dbGetAll("subtitle_record");
+  const usedContents = new Set(remainRecords.map((r) => r.subtitle_content_id));
+  const contentIds = [...new Set(records.map((r) => r.subtitle_content_id).filter((v) => v != null))];
+  let removedContents = 0;
+  for (const cid of contentIds) {
+    if (!usedContents.has(cid)) { await dbDelete("subtitle_content", cid); removedContents++; }
+  }
+
+  /* 3. 只属于这个包的曲目索引 */
+  const usedPaths = new Set(remainRecords.map((r) => r.track_path).filter(Boolean));
+  const orphanPaths = new Set(records.map((r) => r.track_path).filter(Boolean).filter((p) => !usedPaths.has(p)));
+  const trackRows = await dbGetAll("track");
+  let removedTracks = 0;
+  for (const row of trackRows) {
+    if (orphanPaths.has(row.path)) { await dbDelete("track", row.id); removedTracks++; }
+  }
+
+  /* 4. 包记录本身 */
+  await dbDelete("subtitle_package", pkgId);
+
+  /* 5. 内存里的字幕同步移除，正在播的曲目立即失效对应的字幕 */
+  for (const tr of lib.tracks) {
+    tr.availableLyrics = tr.availableLyrics.filter((l) => l.packageId !== pkgId);
+    if (tr.selectedLyricIndex >= tr.availableLyrics.length) {
+      tr.selectedLyricIndex = tr.availableLyrics.length ? 0 : -1;
+    }
+  }
+  const cur = currentFile();
+  if (cur) { loadSubtitleFor(cur); PiP.onTrackChange(); }
+  dbTrackCount = (await dbGetAll("track")).length;
+
+  logLine("已删除压缩包: " + (pkg.file_name || pkgId)
+    + "（字幕记录 " + records.length + "，内容 " + removedContents + "，曲目索引 " + removedTracks + "）", "wr");
+  renderAll();
+  renderList();
+  renderPkgList();
+}
+
+/* ---------------------------- 导入流水线 ---------------------------- */
+let logEl = null;
+function logLine(msg, cls) {
+  if (!logEl) return;
+  const span = document.createElement("span");
+  span.className = cls || "dm";
+  span.textContent = msg + "\n";
+  logEl.appendChild(span);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function setStats(obj) {
+  $("#impStats").innerHTML = Object.entries(obj).map(([k, v]) =>
+    '<div class="stat"><b>' + v + "</b><span>" + k + "</span></div>").join("");
+}
+
+const AUDIO_EXT = ["mp3","flac","wav","ogg","oga","m4a","aac","opus","aiff","aif","wma"];
+const SUB_EXT = ["lrc","vtt","srt","ass","ssa"];
+const extOf = (name) => { const p = name.split("."); return p.length > 1 ? p.pop().toLowerCase() : ""; };
+
+async function decompressRecursive(buf, baseName, depth, collected, pathPrefix, stats) {
+  if (depth > 5) { logLine("嵌套层数超限，跳过: " + baseName, "wr"); return; }
+  if (stats) stats.zips++;
+  let entries;
+  try { entries = listZipEntries(buf); }
+  catch (e) {
+    logLine("解压失败 " + baseName + ": " + e.message, "er");
+    logLine("  可能是加密包或不受支持的算法（LZMA/BCJ2）", "wr");
+    return;
+  }
+  logLine("解压 " + baseName + " → " + entries.length + " 个条目", "dm");
+  for (const e of entries) {
+    const ext = extOf(e.name);
+    const fullName = pathPrefix ? pathPrefix + "/" + e.name : e.name;
+    if (ext === "zip") {
+      const inner = await extractZipEntry(buf, e);
+      const innerPrefix = (pathPrefix ? pathPrefix + "/" : "") + e.name.replace(/\.zip$/i, "");
+      await decompressRecursive(inner.buffer, baseName + " / " + e.name, depth + 1, collected, innerPrefix, stats);
+    } else {
+      collected.push({ entry: e, buf, name: fullName });
+    }
+  }
+}
+
+async function importZip(file, force) {
+  logEl = $("#impLog");
+  logEl.style.display = "block";
+  logEl.innerHTML = "";
+  const t0 = performance.now();
+  try {
+    logLine("Step 1/7: Verify", "ok");
+    const buf = await file.arrayBuffer();
+    const fullHash = await sha256Hex(new Uint8Array(buf));
+    logLine("  文件: " + file.name + " (" + (file.size / 1024 / 1024).toFixed(1) + " MB)");
+    logLine("  hash: " + fullHash.slice(0, 16) + "…", "dm");
+
+    const pkgs = await dbGetAll("subtitle_package");
+    const existingPkg = pkgs.find((p) => p.file_hash === fullHash);
+
+    /* 关键修复：音频 blob 不落库（体积原因），所以"这个包导过"绝不能整体跳过。
+       否则刷新页面、换版本后重新导入会被拦住，曲目列表永远是空的。
+       正确做法：字幕数据复用库里的，音频每次导入都重新解压、重建索引。 */
+    if (existingPkg) {
+      logLine("  包已在库 (#" + existingPkg.id + (force ? "，强制重导" : "，复用字幕并重建音频索引") + ")", "dm");
+    }
+
+    logLine("Step 2/7: Decompress", "ok");
+    const collected = [];
+    const zipStats = { zips: 0 };
+    await decompressRecursive(buf, file.name, 0, collected, "", zipStats);
+    logLine("  解开条目: " + collected.length + "（压缩包 " + zipStats.zips + "）", "dm");
+
+    logLine("Step 3/7: Classify", "ok");
+    const audios = [], subs = [];
+    for (const c of collected) {
+      const ext = extOf(c.name);
+      if (AUDIO_EXT.includes(ext)) audios.push(c);
+      else if (SUB_EXT.includes(ext)) subs.push(c);
+    }
+    logLine("  音频 " + audios.length + " / 字幕 " + subs.length, "dm");
+
+    /* 路径规范化：剥掉压缩包自带的包装层（如 _outer/、包名/），
+       让资源库直接显示作品层。在导入时做，重新构建树时才不会退回原层级。 */
+    const wrapPrefix = commonDirPrefix([...audios, ...subs].map((c) => c.name));
+    if (wrapPrefix) {
+      logLine("  去掉包装层: " + wrapPrefix, "dm");
+      for (const c of audios) c.name = c.name.slice(wrapPrefix.length);
+      for (const c of subs) c.name = c.name.slice(wrapPrefix.length);
+    }
+
+    logLine("Step 4/7: Index audio tracks", "ok");
+    const tracks = [];
+    for (const a of audios) {
+      const bytes = await extractZipEntry(a.buf, a.entry);
+      if (!bytes || !bytes.byteLength) { logLine("  空文件跳过: " + a.name, "wr"); continue; }
+      tracks.push({
+        path: a.name,
+        title: a.name.split("/").pop(),
+        hash: await sha256Hex(bytes),
+        type: "audio",
+        workId: extractProductIds(a.name)[0] || null,
+        blob: new Blob([bytes], { type: mimeOf(a.name) }),
+        duration: 0,
+        availableLyrics: [],
+        selectedLyricIndex: -1,
+      });
+    }
+    logLine("  入索引 " + tracks.length + " 首", "dm");
+
+    logLine("Step 5/7: Match subtitles", "ok");
+    /* package id 提前确定：字幕条目要带上来源包，才能按包单独删除 */
+    const pkgId = existingPkg ? existingPkg.id : await dbAdd("subtitle_package", {
+      file_name: file.name, file_hash: fullHash, size: file.size, created_at: new Date(),
+    });
+
+    const subMap = new Map();
+    for (const s of subs) {
+      const bytes = await extractZipEntry(s.buf, s.entry);
+      if (!bytes || !bytes.byteLength) continue;
+      const hash = await sha256Hex(bytes);
+      if (subMap.has(hash)) { subMap.get(hash).paths.push(s.name); continue; }
+      const { text, encoding } = decodeText(bytes);
+      subMap.set(hash, { hash, bytes, text, encoding, cue: parseSubtitle(text, s.name), paths: [s.name] });
+    }
+    logLine("  唯一字幕 " + subMap.size + " 条（按内容 hash 去重）", "dm");
+
+    let matched = 0;
+    for (const rec of subMap.values()) {
+      const repPath = rec.paths[0];
+      let best = null, bestConf = 0;
+      for (const tr of tracks) {
+        const conf = confidenceOf(repPath, tr.path);
+        if (conf > bestConf) { bestConf = conf; best = tr; }
+      }
+      if (!best) continue;
+      rec.productIds = extractProductIds(repPath);
+      rec.confidence = bestConf;
+      rec.trackPath = best.path;
+      best.availableLyrics.push({
+        title: repPath, confidence: bestConf, cue: rec.cue, encoding: rec.encoding,
+        content: rec.text, packageId: pkgId,
+      });
+      matched++;
+    }
+    for (const tr of tracks) {
+      tr.availableLyrics.sort((a, b) => b.confidence - a.confidence);
+      if (tr.availableLyrics.length) tr.selectedLyricIndex = 0;
+    }
+
+    logLine("Step 6/8: Persist subtitles", "ok");
+    /* package 已在 Step 5 之前确定，这里不再重复插入 */
+
+    /* 字幕内容按内容 hash 复用；记录按 (package, path) 去重 */
+    const allContents = await dbGetAll("subtitle_content");
+    const contentByHash = new Map();
+    for (const c of allContents) if (!contentByHash.has(c.file_hash)) contentByHash.set(c.file_hash, c.id);
+    const allRecords = await dbGetAll("subtitle_record");
+    const recordKeys = new Set(allRecords.map((r) => r.subtitle_package_id + "|" + r.subtitle_file_path));
+    let reusedContents = 0, reusedRecords = 0;
+
+    for (const rec of subMap.values()) {
+      let contentId = contentByHash.get(rec.hash);
+      if (contentId != null) {
+        reusedContents++;
+      } else {
+        contentId = await dbAdd("subtitle_content", {
+          file_hash: rec.hash, size: rec.bytes.byteLength, content: rec.text, created_at: new Date(),
+        });
+        contentByHash.set(rec.hash, contentId);
+      }
+      const rkey = pkgId + "|" + rec.paths[0];
+      if (recordKeys.has(rkey)) { reusedRecords++; continue; }
+      await dbAdd("subtitle_record", {
+        subtitle_file_path: rec.paths[0],
+        paths: rec.paths,
+        product_ids: rec.productIds || [],
+        confidence: rec.confidence || 0,
+        track_path: rec.trackPath || null,
+        subtitle_package_id: pkgId,
+        subtitle_content_id: contentId,
+        created_at: new Date(),
+      });
+      recordKeys.add(rkey);
+    }
+    if (reusedContents || reusedRecords) {
+      logLine("  复用已有字幕 content " + reusedContents + " 条、record " + reusedRecords + " 条", "dm");
+    }
+    /* track 表按 path 去重，避免反复导入把索引表撑爆（只影响计数与提示） */
+    const trackRows = await dbGetAll("track");
+    const knownPaths = new Set(trackRows.map((r) => r.path));
+    for (const tr of tracks) {
+      if (knownPaths.has(tr.path)) continue;
+      await dbAdd("track", {
+        path: tr.path, title: tr.title, hash: tr.hash, workId: tr.workId, hasSubs: tr.availableLyrics.length,
+      });
+      knownPaths.add(tr.path);
+    }
+
+    /* 音频落盘：下次打开直接恢复，不用重新导入 */
+    const wantSave = $("#saveAudio") ? $("#saveAudio").checked : true;
+    let savedCount = 0, saveFailed = 0, savedBytes = 0, skippedStorage = false;
+    if (wantSave && tracks.length) {
+      logLine("Step 7/8: Save audio", "ok");
+      const need = tracks.reduce((a, t) => a + (t.blob ? t.blob.size : 0), 0);
+      let enough = true;
+      try {
+        if (navigator.storage && navigator.storage.estimate) {
+          const est = await navigator.storage.estimate();
+          if (est && est.quota && (est.usage || 0) + need > est.quota * 0.95) {
+            enough = false;
+            logLine("  空间不足：需要 " + fmtSize(need) + "，可用 " + fmtSize(Math.max(0, est.quota - (est.usage || 0))), "wr");
+          }
+        }
+      } catch (e) {}
+      if (enough) {
+        await requestPersistentStorage();
+        for (const t of tracks) {
+          if (!t.blob) continue;
+          try {
+            await dbPut("audio", {
+              path: t.path, title: t.title, workId: t.workId, hash: t.hash,
+              mime: t.blob.type || "", blob: t.blob, size: t.blob.size,
+              duration: t.duration || 0, savedAt: Date.now(),
+            });
+            savedCount++; savedBytes += t.blob.size;
+          } catch (e) { saveFailed++; }
+        }
+        logLine("  已保存 " + savedCount + " 首（" + fmtSize(savedBytes) + "）"
+          + (saveFailed ? "，失败 " + saveFailed : ""), savedCount ? "dm" : "wr");
+        if (saveFailed) logLine("  保存失败的文件下次需要重新导入", "wr");
+      } else {
+        skippedStorage = true;
+        logLine("  已跳过保存：仅本次会话可播放", "wr");
+      }
+    } else if (!wantSave) {
+      logLine("Step 7/8: Save audio — 已关闭", "dm");
+    }
+
+    logLine("Step 8/8: Done", "ok");
+    logLine("  耗时 " + ((performance.now() - t0) / 1000).toFixed(1) + "s", "dm");
+    setStats({
+      曲目: tracks.length,
+      字幕: subMap.size,
+      已匹配: matched,
+      作品: new Set(tracks.map((t) => t.workId).filter(Boolean)).size,
+      压缩包: zipStats.zips,
+      已存: skippedStorage ? "跳过" : savedCount,
+    });
+    mergeIntoLibrary(tracks);
+    await renderPkgList();
+    await updateStorageInfo();
+  } catch (err) {
+    logLine("导入中断: " + (err && err.message ? err.message : err), "er");
+    console.error(err);
+  }
+}
+
+function mimeOf(path) {
+  return {
+    mp3: "audio/mpeg", flac: "audio/flac", wav: "audio/wav", ogg: "audio/ogg", oga: "audio/ogg",
+    m4a: "audio/mp4", aac: "audio/aac", opus: "audio/ogg", aiff: "audio/aiff", aif: "audio/aiff",
+    wma: "audio/x-ms-wma",
+  }[extOf(path)] || "audio/*";
+}
+
+function mergeIntoLibrary(tracks) {
+  for (const t of tracks) {
+    if (lib.byPath.has(t.path)) {
+      const old = lib.byPath.get(t.path);
+      old.availableLyrics = old.availableLyrics.concat(
+        t.availableLyrics.filter((n) => !old.availableLyrics.some((o) => o.title === n.title))
+      ).sort((a, b) => b.confidence - a.confidence);
+      if (old.selectedLyricIndex < 0 && old.availableLyrics.length) old.selectedLyricIndex = 0;
+      if (!old.blob) old.blob = t.blob;
+    } else {
+      lib.byPath.set(t.path, t);
+      lib.tracks.push(t);
+    }
+  }
+  lib.roots = [buildTree(lib.tracks.map((t) => ({ path: t.path, type: "audio" })))];
+  simplifyTree(lib.roots[0]);
+  if (!selectedDirPath) selectedDirPath = firstFolderPath(lib.roots[0]);
+  selectDir(selectedDirPath);
+  renderAll();
+  logStructure();
+}
+
+/* 拖拽 */
+(function bindDrop() {
+  const drop = $("#drop");
+  const input = $("#fileInput");
+  const wantForce = () => !!($("#forceReimport") && $("#forceReimport").checked);
+  drop.onclick = () => input.click();
+  input.onchange = async () => {
+    for (const f of Array.from(input.files || [])) await importZip(f, wantForce());
+    input.value = "";
+  };
+  ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("hot"); }));
+  ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("hot"); }));
+  drop.addEventListener("drop", async (e) => {
+    for (const f of Array.from(e.dataTransfer.files || [])) if (/\.zip$/i.test(f.name)) await importZip(f, wantForce());
+  });
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => {
+    if (e.target.closest("#drop")) return;
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files || []).filter((f) => /\.zip$/i.test(f.name));
+    if (files.length) { openOv("ovImport"); files.forEach((f) => importZip(f, wantForce())); }
+  });
+})();
+
+/* 彻底清空：已从侧栏移除按钮，改到导入弹窗底部（需输入确认） */
+bindClick("#btnWipeAll", async () => {
+  const ans = prompt(
+    "这会删除本浏览器里全部导入记录与字幕数据，无法恢复。\n"
+    + "音频文件本来就存在你自己的压缩包里，不受影响。\n\n"
+    + "输入 DELETE 确认："
+  );
+  if (ans !== "DELETE") return;
+  await dbClearAll();
+  lib.roots = []; lib.tracks = []; lib.byPath.clear();
+  selectedDirPath = ""; currentFolderList = [];
+  dbTrackCount = 0;
+  commit("EMPTY_QUEUE");
+  renderTree(); renderList(); renderPkgList();
+  logLine("本地库已清空", "ok");
+});
+
+/* 从浏览器存储恢复音频与字幕：下次打开无需重新导入 */
+async function restoreFromStorage() {
+  const rows = await dbGetAll("audio");
+  if (!rows.length) return 0;
+
+  const contents = await dbGetAll("subtitle_content");
+  const contentById = new Map(contents.map((c) => [c.id, c]));
+  const records = await dbGetAll("subtitle_record");
+
+  for (const r of rows) {
+    if (!r.blob) continue;
+    const t = {
+      path: r.path,
+      title: r.title || (r.path.split("/").pop() || r.path),
+      hash: r.hash || "",
+      type: "audio",
+      workId: r.workId || null,
+      blob: r.blob,
+      duration: r.duration || 0,
+      availableLyrics: [],
+      selectedLyricIndex: -1,
+    };
+    lib.byPath.set(t.path, t);
+    lib.tracks.push(t);
+  }
+
+  /* 重新挂回字幕：record 记录了 track_path 与 content 的对应关系 */
+  for (const rec of records) {
+    const tr = lib.byPath.get(rec.track_path);
+    if (!tr) continue;
+    const c = contentById.get(rec.subtitle_content_id);
+    if (!c || !c.content) continue;
+    const name = rec.subtitle_file_path || "subtitle.lrc";
+    tr.availableLyrics.push({
+      title: name,
+      confidence: rec.confidence || 0,
+      cue: parseSubtitle(c.content, name),
+      content: c.content,
+      packageId: rec.subtitle_package_id,
+    });
+  }
+  for (const tr of lib.tracks) {
+    tr.availableLyrics.sort((a, b) => b.confidence - a.confidence);
+    if (tr.availableLyrics.length) tr.selectedLyricIndex = 0;
+  }
+
+  lib.roots = [buildTree(lib.tracks.map((t) => ({ path: t.path, type: "audio" })))];
+  simplifyTree(lib.roots[0]);
+  selectedDirPath = firstFolderPath(lib.roots[0]);
+  selectDir(selectedDirPath);
+  renderAll();
+  dbTrackCount = (await dbGetAll("track")).length;
+  return lib.tracks.length;
+}
+
+/* ------------------------------ 启动 ------------------------------ */
+(async function boot() {
+  logEl = $("#impLog");
+  setStats({ 状态: "待导入" });
+
+  /* 支持 ?reset=1 / ?wipe=1：打开即清空整个本地库（用于清掉遗留的"已导入"记录） */
+  try {
+    const qs = new URLSearchParams(location.search);
+    if (qs.has("reset") || qs.has("wipe")) {
+      await dbClearAll();
+      const all = await dbGetAll("subtitle_record");
+      for (const r of all) await dbDelete("subtitle_record", r.id);
+      history.replaceState(null, "", location.pathname + location.hash);
+      logLine("本地库已清空（?reset=1）", "ok");
+    }
+  } catch (e) {
+    logLine("清空失败: " + (e && e.message ? e.message : e), "er");
+  }
+
+  PiP.init();
+  FloatSub.init();
+  await updateStorageInfo();
+
+  /* 优先从浏览器存储恢复音频 —— 这就是"下次打开不用重新导入" */
+  let restored = 0;
+  try {
+    restored = await restoreFromStorage();
+  } catch (e) {
+    logLine("恢复已保存的音频失败: " + (e && e.message ? e.message : e), "er");
+  }
+  if (restored) {
+    logLine("已从浏览器存储恢复 " + restored + " 首音频（无需重新导入）", "ok");
+  } else {
+    try {
+      const tracks = await dbGetAll("track");
+      dbTrackCount = tracks.length;
+      if (dbTrackCount) {
+        logLine("库里有 " + dbTrackCount + " 条旧索引，但没有音频本体；重新导入一次即可，之后会自动保存。", "wr");
+      }
+    } catch (e) {}
+  }
+
+  renderAll();
+  renderTree();
+  renderList();
+  renderPkgList();
+})();
+</script>
+</body>
+</html>
